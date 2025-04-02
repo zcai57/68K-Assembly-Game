@@ -1,0 +1,2342 @@
+00001212 Starting Address
+Assembler used: EASy68K Editor/Assembler v5.16.01
+Created On: 11/19/2024 5:36:55 PM
+
+00000000                             1   *-----------------------------------------------------------
+00000000                             2  * Title      : Slime Smasher
+00000000                             3  * Written by : Julian Cai
+00000000                             4  * Date       : 
+00000000                             5  * Description: This is a game of a wizard fighting slimes. Press space to throw 
+00000000                             6  *              your staff. WASD to move and don't let the slime hit you!
+00000000                             7  *-----------------------------------------------------------
+00000000                             8         
+00001000                             9      ORG    $1000 ; first instruction of program
+00001000                            10      INCLUDE 'bitmap.X68'
+00001000  =0000000D                 11  File_TASK_PRINT      EQU     13
+00001000  =00000033                 12  FILE_TASK_FOPEN      EQU     51
+00001000  =00000034                 13  FILE_TASK_FCREATE    EQU     52
+00001000  =00000035                 14  FILE_TASK_FREAD      EQU     53
+00001000  =00000036                 15  FILE_TASK_FWRITE     EQU     54
+00001000  =00000038                 16  FILE_TASK_FCLOSE     EQU     56
+00001000  =00000000                 17  IMAGE_FORMAT_OFFSET  EQU     0
+00001000  =00000002                 18  SIZE_OFFSET          EQU     2
+00001000  =0000001C                 19  COLOR_FORMAT_OFFSET  EQU     28
+00001000  =00000012                 20  WIDTH_OFFSET         EQU     18
+00001000  =00000016                 21  HEIGHT_OFFSET        EQU     22
+00001000  =00000036                 22  IMAGE_OFFSET         EQU     54
+00001000  =00000050                 23  SET_PEN_COLOR_CMD    EQU     80
+00001000  =00000052                 24  DRAW_PIXEL_CMD       EQU     82
+00001000                            25  ALL_REG                 REG     d0-d7/a0-a6 
+00001000                            26  
+00001000                            27  
+00001000                            28  
+00001000                            29  bmp_unload:
+00001000  48E7 6040                 30          movem.l    d1-d2/a1, -(sp)
+00001004  264A                      31          move.l      a2, a3
+00001006                            32          *Compute pixel numbers
+00001006  202B 0012                 33          move.l      WIDTH_OFFSET(a3),d0
+0000100A  6100 012C                 34          bsr         switchEndian
+0000100E  2400                      35          move.l      d0, d2
+00001010  202B 0016                 36          move.l      HEIGHT_OFFSET(a3),d0
+00001014  6100 0122                 37          bsr         switchEndian
+00001018  C4C0                      38          mulu        d0, d2     // d1 stores pixel numbers
+0000101A                            39  .fileConvert:
+0000101A                            40          *convert all image pixel to 68k format
+0000101A  202B 0036                 41          move.l      IMAGE_OFFSET(a3),d0
+0000101E  E198                      42          rol.l       #8, d0
+00001020  2740 0036                 43          move.l      d0, IMAGE_OFFSET(a3)
+00001024  588B                      44          add.l       #4, a3
+00001026  5382                      45          sub.l       #1, d2
+00001028  B4BC 00000000             46          cmp.l       #0, d2
+0000102E  66EA                      47          bne         .fileConvert
+00001030                            48  
+00001030                            49  .afterConvert       
+00001030                            50          * d0 used for filewrite cmd
+00001030                            51          * a1 for output filename 
+00001030                            52          * d2 is used to store size to write
+00001030  2401                      53          move.l     d1, d2
+00001032  103C 0034                 54          move.b     #FILE_TASK_FCREATE, d0
+00001036  4E4F                      55          trap #15
+00001038  B03C 0000                 56          cmp.b      #0, d0
+0000103C  6600 0026                 57          bne       .error
+00001040                            58          * After read d1 stores filename
+00001040  103C 0036                 59          move.b     #FILE_TASK_FWRITE,d0
+00001044  224A                      60          move.l     a2, a1
+00001046                            61          
+00001046  4E4F                      62          trap #15
+00001048  B03C 0000                 63          cmp.b      #0, d0
+0000104C  6600 0016                 64          bne        .error
+00001050                            65          
+00001050                            66          * Close file
+00001050  103C 0038                 67          move.b     #FILE_TASK_FCLOSE,d0
+00001054  4E4F                      68          trap #15
+00001056  B07C 0000                 69          cmp        #0, d0
+0000105A  6600 0008                 70          bne        .error
+0000105E                            71          
+0000105E  4CDF 0206                 72          movem.l    (sp)+, d1-d2/a1
+00001062  4E75                      73          rts
+00001064                            74  
+00001064                            75  .error
+00001064  103C 0001                 76      move.b      #1,d0
+00001068  4E75                      77      rts
+0000106A                            78  
+0000106A                            79  
+0000106A                            80  bmp_load:
+0000106A                            81          * a1 is opening file name
+0000106A                            82          *move.l      (a1),d3         //copy file name in d3
+0000106A  48E7 3040                 83          movem.l    d2-d3/a1, -(sp)
+0000106E  2401                      84          move.l     d1, d2
+00001070  103C 0033                 85          move.b     #FILE_TASK_FOPEN, d0
+00001074  4E4F                      86          trap #15
+00001076  B03C 0000                 87          cmp.b      #0, d0
+0000107A  6600 00B6                 88          bne       .error
+0000107E                            89          
+0000107E  2601                      90          move.l      d1,d3 
+00001080                            91          * file name stored in d1
+00001080                            92          * d2.l num of bytes to read for FILE_READ        
+00001080                            93          * a1 is buffer to read
+00001080                            94          * output d1.l as size read
+00001080  103C 0035                 95          move.b     #FILE_TASK_FREAD,d0
+00001084  224A                      96          move.l     a2, a1
+00001086                            97          
+00001086  4E4F                      98          trap #15
+00001088  B03C 0000                 99          cmp.b      #0, d0
+0000108C  6600 00A4                100          bne        .error
+00001090                           101          
+00001090                           102          *check width < 1024
+00001090  202A 0012                103          move.l      WIDTH_OFFSET(a2),d0
+00001094  7204                     104          move.l      #4, d1
+00001096  6100 00A0                105          bsr         switchEndian
+0000109A  B0BC 00000400            106          cmp.l      #1024, d0
+000010A0  6200 0090                107          bhi        .error
+000010A4                           108          *check height < 1024
+000010A4  202A 0016                109          move.l      HEIGHT_OFFSET(a2),d0
+000010A8  6100 008E                110          bsr         switchEndian
+000010AC  B0BC 00000400            111          cmp.l      #1024, d0
+000010B2  6200 007E                112          bhi         .error
+000010B6                           113          *check bmp format is 24 or 32
+000010B6  4280                     114          clr.l       d0
+000010B8  202A 001C                115          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010BC  7202                     116          move.l      #2, d1
+000010BE  6100 0078                117          bsr         switchEndian
+000010C2  B07C 0018                118          cmp.w       #24, d0          // check 24
+000010C6  6600 000E                119          bne         .check32         // if not 24, check 32
+000010CA  33FC 0003 0000120C       120          move.w      #3, bitsPerPixel // if 24, assign bitsPerPixel
+000010D2  6000 0046                121          bra         .afterCheck
+000010D6                           122  .check32:
+000010D6  4280                     123          clr.l       d0
+000010D8  202A 001C                124          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010DC  6100 005A                125          bsr         switchEndian
+000010E0  B07C 0020                126          cmp.w       #32, d0
+000010E4  6600 004C                127          bne         .error   
+000010E8  33FC 0004 0000120C       128          move.w      #4, bitsPerPixel
+000010F0                           129          *Compute pixel numbers
+000010F0  202A 0012                130          move.l      WIDTH_OFFSET(a2),d0
+000010F4  6100 0042                131          bsr         switchEndian
+000010F8  2200                     132          move.l      d0, d1  //weight
+000010FA  202A 0016                133          move.l      HEIGHT_OFFSET(a2),d0
+000010FE  6100 0038                134          bsr         switchEndian    //height
+00001102  C2C0                     135          mulu        d0, d1      // d1 stores pixel numbers
+00001104                           136  .fileConvert:
+00001104                           137          *convert all image pixel to 68k format
+00001104  202A 0036                138          move.l      IMAGE_OFFSET(a2),d0
+00001108  E098                     139          ror.l       #8, d0
+0000110A  2540 0036                140          move.l      d0, IMAGE_OFFSET(a2)
+0000110E  588A                     141          add.l       #4, a2
+00001110  5381                     142          sub.l       #1, d1
+00001112  B2BC 00000000            143          cmp.l       #0, d1
+00001118  66EA                     144          bne         .fileConvert
+0000111A                           145  .afterCheck
+0000111A  3203                     146          move        d3, d1 // restore file name
+0000111C                           147          * Close file
+0000111C  103C 0038                148          move.b     #FILE_TASK_FCLOSE,d0
+00001120  4E4F                     149          trap #15
+00001122  B07C 0000                150          cmp        #0, d0
+00001126  6600 000A                151          bne        .error
+0000112A                           152          
+0000112A  2202                     153          move.l     d2, d1
+0000112C  4CDF 020C                154          movem.l    (sp)+,d2-d3/a1
+00001130  4E75                     155          rts
+00001132                           156  
+00001132                           157  .error
+00001132  103C 0001                158      move.b      #1,d0
+00001136  4E75                     159      rts
+00001138                           160      
+00001138                           161  switchEndian:
+00001138                           162      * d5 is temp storage for d2
+00001138  E058                     163      ror.w       #8, d0     ; Rotate the lower word to swap the lowest bytes
+0000113A  4840                     164      swap        d0         ; Swap the upper and lower 16-bit words
+0000113C  E058                     165      ror.w       #8, d0     ; Rotate the lower word to swap the previously upper bytes
+0000113E  4E75                     166      rts
+00001140                           167  
+00001140                           168  bmp_draw
+00001140  48E7 FFFE                169      movem.l      ALL_REG, -(sp)
+00001144                           170      * Assign drawposition x and y and load bitsPerPixel to a3
+00001144  47F9 0000120C            171       lea         bitsPerPixel, a3   
+0000114A  33C1 0000120E            172       move.w       d1, drawPositionX
+00001150  33C2 00001210            173       move.w       d2, drawPositionY 
+00001156                           174       
+00001156                           175       * check rect y is in bound
+00001156  2449                     176       move.l      a1, a2
+00001158  2004                     177       move.l      d4, d0
+0000115A  5240                     178       addq        #1, d0
+0000115C  BC80                     179       cmp.l       d0, d6   
+0000115E  6E00 00A4                180       bgt         .error     // if rect.y is bigger than start.y index + 1, err
+00001162                           181       
+00001162                           182       * check rect x is in bound
+00001162  2003                     183       move.l      d3, d0
+00001164  D085                     184       add.l       d5, d0
+00001166  2E29 0012                185       move.l      WIDTH_OFFSET(a1),d7
+0000116A  E05F                     186       ror.w       #8, d7     ; Rotate the lower word to swap the lowest bytes
+0000116C  4847                     187       swap        d7         ; Swap the upper and lower 16-bit words
+0000116E  E05F                     188       ror.w       #8, d7 
+00001170  B087                     189       cmp.l       d7,d0
+00001172  6E00 0090                190       bgt         .error   // if d3+d5 bigger than width, err
+00001176                           191       
+00001176                           192       * Check draw position is low enough to contain picture
+00001176  BC82                     193       cmp.l       d2, d6
+00001178  6E00 008A                194       bgt         .error       // if rect.y is bigger than draw pos.y, err
+0000117C                           195       
+0000117C                           196       * Store offset between rect.y and image height
+0000117C  2029 0016                197       move.l      HEIGHT_OFFSET(a1),d0
+00001180  61B6                     198       bsr         switchEndian    
+00001182  9084                     199       sub.l       d4, d0
+00001184                           200      
+00001184  D5FC 00000036            201       add.l       #IMAGE_OFFSET, a2 // now a2 represent pixel data start
+0000118A                           202       
+0000118A                           203       * Start locating start point
+0000118A                           204       * locate row
+0000118A  2E29 0012                205       move.l      WIDTH_OFFSET(a1),d7
+0000118E  E05F                     206       ror.w       #8, d7
+00001190  4847                     207       swap        d7         
+00001192  E05F                     208       ror.w       #8, d7 
+00001194                           209       
+00001194  CED3                     210       mulu        (a3),d7           // every pixel is 3 bits, with Width num of pixels
+00001196  2807                     211       move.l      d7, d4         // copy d7 to d4. d4 is number of bits per row       
+00001198  CEC0                     212       mulu        d0, d7
+0000119A  D5C7                     213       add.l       d7, a2
+0000119C                           214       
+0000119C                           215       * locate column
+0000119C  C6D3                     216       mulu        (a3),d3
+0000119E  D5C3                     217       add.l       d3, a2         // now a2 is starting point address
+000011A0  260A                     218       move.l      a2, d3         // d3 is now the address of starting point
+000011A2                           219       * start loop
+000011A2                           220  .outerLoop
+000011A2                           221      *check row d2 is 0
+000011A2  BCBC 00000000            222      cmp.l       #0, d6
+000011A8  6700 0052                223      beq         .return
+000011AC  48E7 0400                224      movem.l      d5, -(sp)     
+000011B0                           225  .innerLoop
+000011B0                           226      * start printing
+000011B0                           227      * check if d3 is 0
+000011B0  BABC 00000000            228      cmp.l       #0, d5
+000011B6  6700 002E                229      beq         .nextRow
+000011BA                           230      
+000011BA  2012                     231      move.l      (a2),d0
+000011BC  588A                     232      add.l        #4,a2     // update a2
+000011BE                           233      
+000011BE                           234      *check if is background
+000011BE  B0BC 00000002            235      cmp.l       #$00000002, d0
+000011C4  6700 001A                236      beq         .updateCounter
+000011C8  B0BC 00000000            237      cmp.l       #$00000000, d0
+000011CE  6700 0010                238      beq         .updateCounter
+000011D2                           239      * start to print pixel
+000011D2  2E01                     240      move.l      d1, d7      // temp store d1 at d7
+000011D4  2200                     241      move.l      d0, d1      // store pen color in d1
+000011D6  7050                     242      move.l      #SET_PEN_COLOR_CMD, d0
+000011D8  4E4F                     243      trap        #15
+000011DA                           244      
+000011DA  2207                     245      move.l      d7, d1      // restore d1 draw x
+000011DC  7052                     246      move.l      #DRAW_PIXEL_CMD, d0
+000011DE  4E4F                     247      trap        #15
+000011E0                           248  
+000011E0                           249  .updateCounter
+000011E0                           250      * update d2, a2 counter and print next in row
+000011E0  5385                     251      sub.l        #1, d5
+000011E2  5281                     252      add.l        #1, d1 
+000011E4  60CA                     253      bra         .innerLoop
+000011E6                           254      
+000011E6                           255  .nextRow
+000011E6                           256      * Update counters
+000011E6  4CDF 0020                257      movem.l     (sp)+, d5
+000011EA  5386                     258      sub.l       #1, d6
+000011EC  49F9 0000120E            259      lea         drawPositionX, a4
+000011F2  3214                     260      move.w      (a4),d1      // draw pos x restored init pos
+000011F4  5382                     261      sub.l       #1, d2       // draw pos y increment by 1 
+000011F6                           262  
+000011F6                           263      * Update a2 to next row start point
+000011F6  D684                     264      add.l       d4, d3
+000011F8  2443                     265      move.l      d3, a2  
+000011FA                           266      
+000011FA  60A6                     267      bra         .outerLoop
+000011FC                           268      
+000011FC                           269  .return 
+000011FC  4CDF 7FFF                270      movem.l     (sp)+, ALL_REG
+00001200  7000                     271      move.l      #0, d0
+00001202  4E75                     272      rts   
+00001204                           273      
+00001204                           274  .error
+00001204  4CDF 7FFF                275      movem.l     (sp)+, ALL_REG
+00001208  7001                     276      move.l      #1,d0
+0000120A  4E75                     277      rts
+0000120C                           278      
+0000120C                           279      
+0000120C                           280  bitsPerPixel    ds.w    1
+0000120E                           281  drawPositionX   ds.w    1
+00001210                           282  drawPositionY   ds.w    1
+00001212                           283  
+00001212                           284  
+00001212                           285  
+00001212                           286  
+00001212                           287  
+00001212                           288  
+00001212                           289  
+00001212                           290  
+00001212                           291  
+00001212                           292  
+00001212                           293  
+00001212                           294  
+00001212                           295  
+00001212                           296  
+00001212                           297  
+00001212                           298  
+00001212                           299  -------------------- end include --------------------
+00001212                           300  *all registers
+00001212                           301  ALL_REG                 REG     d0-d7/a0-a6    
+00001212                           302  
+00001212                           303  *trap
+00001212  =0000000B                304  CLEAR_SCREEN_COMMAND    equ     11
+00001212  =0000000D                305  TASK_PRINT              equ     13
+00001212  =00000011                306  DOUBLE_BUFFERED_MODE    equ     17
+00001212  =00000013                307  GET_USER_INPUT_COMMAND  equ     19
+00001212  =0000005C                308  DRAWING_MODE_TRAP_CODE  equ     92
+00001212  =0000005E                309  REPAINT_SCREEN_TRAP_CODE    equ 94
+00001212  =00000050                310  SET_PEN_COLOR_COMMAND   equ     80
+00001212  =00000051                311  SET_FILL_COLOR_COMMAND  equ     81
+00001212  =00000057                312  DRAW_RECTANGLE_COMMAND  equ     87
+00001212  =00000058                313  DRAW_CIRCLE_COMMAND     equ     88
+00001212  =00000017                314  DELAY_FRAME             equ     23
+00001212  =00000010                315  DOUBLE_BUFFERED_OFF     equ     16
+00001212  =00000047                316  LOAD_SOUND_COMMAND      equ     71
+00001212  =00000048                317  PLAY_SOUND_COMMAND      equ     72
+00001212                           318  
+00001212                           319  *key code
+00001212  =00000025                320  KEY_LEFT_INPUT          equ     $25
+00001212  =00000026                321  KEY_UP_INPUT            equ     $26
+00001212  =00000027                322  KEY_RIGHT_INPUT         equ     $27
+00001212  =00000028                323  KEY_DOWN_INPUT          equ     $28
+00001212                           324  
+00001212  =00000020                325  KEY_SPACE_INPUT         equ     $20
+00001212  =00000057                326  KEY_W_INPUT             equ     $57
+00001212  =00000041                327  KEY_A_INPUT             equ     $41
+00001212  =00000053                328  KEY_S_INPUT             equ     $53
+00001212  =00000044                329  KEY_D_INPUT             equ     $44
+00001212                           330  
+00001212                           331  
+00001212                           332  *self-defined constant
+00001212  =00000019                333  PLAYER_MOVE_DIST        equ     25
+00001212  =0000FF00                334  CLEAR_SCREEN_MAGIC_VAL  equ     $FF00
+00001212  =00000032                335  FRAME_DELAY_TIME        EQU     50
+00001212  =00000028                336  PLAYER_WIDTH            EQU     40
+00001212  =00000041                337  PLAYER_HEIGHT           EQU     65
+00001212  =00000014                338  PROJECTILE_X_OFFSET     EQU     20
+00001212  =00000006                339  PROJECTILE_ACC          EQU     6
+00001212  =0000002D                340  PROJECTILE_INIT_SPEED   EQU     45
+00001212  =00000037                341  PROJECTILE_HEIGHT       EQU     55
+00001212  =00000026                342  ENEMY_WIDTH             EQU     38
+00001212  =00000014                343  ENEMY_HEIGHT            EQU     20
+00001212  =0000000A                344  ENEMY_DMG               EQU     10
+00001212  =00000001                345  BITMASK                 EQU     $00000001
+00001212  =00000008                346  STAFF_FRAME_NUM         EQU     8
+00001212  =00000014                347  WIN_CONDITION           EQU     20
+00001212  =0000003C                348  PROJECTILE_R_OFFSET     EQU     60
+00001212  =00000014                349  PROJECTILE_D_OFFSET     EQU     20
+00001212  =00000055                350  PROJECTILE_U_OFFSET     EQU     85
+00001212                           351  
+00001212                           352  *color
+00001212  =00000000                353  BLACK   equ     $00000000
+00001212  =000000FF                354  RED     equ     $000000FF
+00001212  =0000FF00                355  GREEN   equ     $0000FF00
+00001212  =00FF0000                356  BLUE    equ     $00FF0000
+00001212  =0000FFFF                357  YELLOW  equ     RED+GREEN
+00001212  =003090FF                358  ORANGE  equ     $003090FF
+00001212  =00FFFFFF                359  WHITE   equ     RED+GREEN+BLUE
+00001212                           360  
+00001212                           361  *7SEG
+00001212  =01111110                362  ZERO    EQU     $01111110
+00001212  =00110000                363  ONE     EQU     $00110000
+00001212  =01101101                364  TWO     EQU     $01101101
+00001212  =01111001                365  THREE   EQU     $01111001
+00001212  =00110011                366  FOUR    EQU     $00110011
+00001212  =01011011                367  FIVE    EQU     $01011011
+00001212  =01011111                368  SIX     EQU     $01011111                                                                                   
+00001212  =01110000                369  SEVEN   EQU     $01110000
+00001212  =01111111                370  EIGHT   EQU     $01111111
+00001212  =01111011                371  NINE    EQU     $01111011
+00001212                           372  
+00001212                           373  
+00001212                           374  *power meter info
+00001212  =0000000F                375  POWER_METER_TOP                 equ     15
+00001212  =0000001E                376  POWER_METER_BOTTOM              equ     30
+00001212  =00000028                377  POWER_METER_LEFT                equ     40
+00001212  =000000FA                378  POWER_METER_RIGHT               equ     250
+00001212  =00FF0000                379  POWER_METER_COLOR               equ     BLUE
+00001212  =000000FF                380  POWER_METER_INSIDE_COLOR        equ     RED
+00001212  =00000100                381  POWER_METER_SPEED               equ     256
+00001212                           382  
+00001212                           383  
+00001212                           384  
+00001212                           385  
+00001212                           386  START:
+00001212                           387      *jsr     RunTest
+00001212                           388  *set double buffered mode
+00001212  705C                     389      move.l  #DRAWING_MODE_TRAP_CODE,d0
+00001214  7211                     390      move.l  #DOUBLE_BUFFERED_MODE,d1
+00001216  4E4F                     391      trap    #15
+00001218                           392  *init projectile
+00001218  6100 020C                393      bsr     loadStaff
+0000121C  33FC 0000 00002342       394      move.w  #0, projectileActive
+00001224  33FC 0000 00002344       395      move.w  #0, projectileThrown
+0000122C  33FC 002D 0000234A       396      move.w  #PROJECTILE_INIT_SPEED, projectile_Speed
+00001234                           397  *init player position
+00001234  33FC 00FA 00002300       398      move.w  #250, PLAYER_X    // draw x
+0000123C  33FC 00FA 00002302       399      move.w  #250, PLAYER_Y    // draw y
+00001244                           400  *init enemies pos
+00001244  41F9 0000230C            401      lea     ENEMY_POS, a0
+0000124A  243C 00000008            402      move.l  #ENEMY_NUM, d2
+00001250  45F9 00002304            403      lea     ENEMY_ACTIVE, a2
+00001256  47F9 00002332            404      lea     ENEMY_MOVE_DIST, a3
+0000125C  7632                     405      move.l  #50, d3
+0000125E  283C 00000190            406      move.l  #400, d4
+00001264                           407  * init enemies hit count
+00001264  33FC 0000 0000234C       408      move.w  #0, enemy_hit
+0000126C                           409  *init enemy speed random seed
+0000126C  23FC 0000ABF2 0000233A   410      move.l  #$ABF2, Prng32
+00001276                           411  *init player frames
+00001276  33FC 0000 00002350       412      move.w  #0, playerL_frame
+0000127E  33FC 0000 00002352       413      move.w  #0, playerR_frame
+00001286  33FC 0000 00002354       414      move.w  #0, attack_frame
+0000128E  33FC 0000 00002356       415      move.w  #0, player_facing
+00001296  33FC 0000 00002358       416      move.w  #0, is_attacking
+0000129E                           417  *init health bar
+0000129E  23FC 00000064 0000233E   418      move.l  #100, powerMeterPercent 
+000012A8                           419  *init all sound
+000012A8  43F9 000022AA            420      lea     SOUND_FILE, a1
+000012AE  7047                     421      move.l  #LOAD_SOUND_COMMAND, d0
+000012B0  7201                     422      move.l  #1, d1
+000012B2  4E4F                     423      trap    #15
+000012B4  43F9 000022B2            424      lea     SOUND_FILE1, a1
+000012BA  7202                     425      move.l  #2, d1
+000012BC  4E4F                     426      trap    #15
+000012BE  43F9 000022BD            427      lea     SOUND_FILE2, a1
+000012C4  7203                     428      move.l  #3, d1
+000012C6  4E4F                     429      trap    #15
+000012C8  43F9 000022C5            430      lea     SOUND_FILE3, a1
+000012CE  7204                     431      move.l  #4, d1
+000012D0  4E4F                     432      trap    #15
+000012D2                           433  * Init enemy active state to inactive
+000012D2                           434  .loop
+000012D2                           435      * a2 isActive, a0 enemy pos, a3 enemy speed 
+000012D2  B4BC 00000000            436      cmp.l   #0, d2
+000012D8  6700 000C                437      beq     .continue
+000012DC  14BC 0000                438      move.b  #00, (a2)   // set to inactive
+000012E0                           439      *Update counters
+000012E0  528A                     440      add.l   #1, a2  //enemy counter
+000012E2  5382                     441      sub.l   #1, d2      // loop counter
+000012E4  60EC                     442      bra     .loop
+000012E6                           443  .continue
+000012E6                           444  *load player and enemy asset
+000012E6  6100 0098                445      bsr     loadPlayer
+000012EA  B0BC 00000001            446      cmp.l   #1, d0
+000012F0  6700 0030                447      beq     .error
+000012F4                           448  
+000012F4  6100 010A                449      bsr     loadEnemy
+000012F8  B0BC 00000001            450      cmp.l   #1, d0
+000012FE  6700 0022                451      beq     .error
+00001302                           452  *load win lose asset 
+00001302  6100 0148                453      bsr     loadWin
+00001306  B0BC 00000001            454      cmp.l   #1, d0
+0000130C  6700 0014                455      beq     .error
+00001310                           456  
+00001310  6100 0160                457      bsr     loadLose
+00001314  B0BC 00000001            458      cmp.l   #1, d0
+0000131A  6700 0006                459      beq     .error
+0000131E                           460  
+0000131E                           461  * game loop start
+0000131E  6000 0010                462      bra     gameLoop
+00001322                           463  .error
+00001322  21C0 0001                464      move.l  d0, 1
+00001326  4E75                     465      rts
+00001328                           466  
+00001328                           467  * this is a run test subroutine
+00001328                           468  RunTest
+00001328                           469      * unit test for check collision with player, used in debug phase
+00001328  4EB9 000020F2            470      jsr     TestCheckCollision
+0000132E  4E75                     471      rts    
+00001330                           472      
+00001330                           473  * The game loop
+00001330                           474  gameLoop:
+00001330                           475  *read the input
+00001330  4EB9 00001498            476      jsr     clearScreen
+00001336                           477  *Handle input  
+00001336  6100 078E                478      bsr     drawHealthBar
+0000133A  4EB9 00001B30            479      jsr     handleInput
+00001340  6100 0164                480      bsr     drawPlayer
+00001344                           481  *Update and draw projectile
+00001344  6100 05DE                482      bsr     drawStaff
+00001348  4EB9 00001DE8            483      jsr     updateStaff
+0000134E                           484  *Update Enemy before draw
+0000134E  4EB9 000019AA            485      jsr     EnemySpawn   
+00001354  6100 06E2                486      bsr     drawAllEnemies
+00001358                           487      
+00001358                           488  *Update UI
+00001358  4EB9 00001F12            489      jsr     updateUI
+0000135E                           490  *Swap buffers
+0000135E  4EB9 00001B28            491      jsr     swapBuffers
+00001364                           492  *Check Win
+00001364  0C79 0014 0000234C       493      cmp.w   #WIN_CONDITION, enemy_hit
+0000136C  6C00 0E44                494      bge     Win  
+00001370                           495  *Check Lose
+00001370  0CB9 00000000 0000233E   496      cmp.l   #0, powerMeterPercent
+0000137A  6F00 0E16                497      ble     Lose
+0000137E                           498  *game updates
+0000137E  60B0                     499      bra     gameloop
+00001380                           500  
+00001380                           501  loadPlayer:
+00001380  43F9 00002246            502      lea     INPUT_FILE, a1
+00001386  45F9 0000246A            503      lea     FILEBUFFER, a2
+0000138C  223C 0002E23F            504      move.l  #FILESIZE,d1
+00001392  6100 FCD6                505      bsr     bmp_load
+00001396  B03C 0000                506      cmp.b   #0, d0
+0000139A  6600 005E                507      bne     .error
+0000139E                           508      
+0000139E  43F9 0000227B            509      lea     INPUT_FILE5, a1
+000013A4  45F9 002CD926            510      lea     FILEBUFFER5, a2
+000013AA  223C 0002E23F            511      move.l  #FILESIZE,d1
+000013B0  6100 FCB8                512      bsr     bmp_load
+000013B4  B03C 0000                513      cmp.b   #0, d0
+000013B8  6600 0040                514      bne     .error
+000013BC                           515      
+000013BC  43F9 0000228B            516      lea     INPUT_FILE6, a1
+000013C2  45F9 002FBB66            517      lea     FILEBUFFER6, a2
+000013C8  223C 0002E23F            518      move.l  #FILESIZE,d1
+000013CE  6100 FC9A                519      bsr     bmp_load
+000013D2  B03C 0000                520      cmp.b   #0, d0
+000013D6  6600 0022                521      bne     .error
+000013DA                           522      
+000013DA  43F9 0000229B            523      lea     INPUT_FILE7, a1
+000013E0  45F9 00329DA6            524      lea     FILEBUFFER7, a2
+000013E6  223C 0002E23F            525      move.l  #FILESIZE,d1
+000013EC  6100 FC7C                526      bsr     bmp_load
+000013F0  B03C 0000                527      cmp.b   #0, d0
+000013F4  6600 0004                528      bne     .error
+000013F8  4E75                     529      rts
+000013FA                           530  
+000013FA                           531  
+000013FA                           532  .error
+000013FA  21C0 0001                533      move.l  d0, 1
+000013FE  4E75                     534      rts
+00001400                           535      
+00001400                           536  loadEnemy
+00001400  43F9 00002255            537      lea     INPUT_FILE1, a1
+00001406  45F9 000306AA            538      lea     FILEBUFFER1, a2
+0000140C  223C 00005000            539      move.l  #FILESIZE1,d1
+00001412  6100 FC56                540      bsr     bmp_load
+00001416  B03C 0000                541      cmp.b   #0, d0
+0000141A  6600 0004                542      bne     .error
+0000141E  4E75                     543      rts
+00001420                           544  .error
+00001420  21C0 0001                545      move.l  d0, 1
+00001424  4E75                     546      rts
+00001426                           547      
+00001426                           548  loadStaff
+00001426  43F9 0000225F            549      lea     INPUT_FILE2, a1
+0000142C  45F9 000356AA            550      lea     FILEBUFFER2, a2
+00001432  223C 0001F43F            551      move.l  #FILESIZE2,d1
+00001438  6100 FC30                552      bsr     bmp_load
+0000143C  B03C 0000                553      cmp.b   #0, d0
+00001440  6600 0004                554      bne     .error
+00001444  4E75                     555      rts
+00001446                           556  .error
+00001446  21C0 0001                557      move.l  d0, 1
+0000144A  4E75                     558      rts
+0000144C                           559  
+0000144C                           560  loadWin
+0000144C  43F9 0000226A            561      lea     INPUT_FILE3, a1
+00001452  45F9 00054AEA            562      lea     FILEBUFFER3, a2
+00001458  223C 0007E93F            563      move.l  #FILESIZE3,d1
+0000145E  6100 FC0A                564      bsr     bmp_load
+00001462  B03C 0000                565      cmp.b   #0, d0
+00001466  6600 0004                566      bne     .error
+0000146A  4E75                     567      rts
+0000146C                           568  .error
+0000146C  21C0 0001                569      move.l  d0, 1
+00001470  4E75                     570      rts
+00001472                           571  
+00001472                           572  loadLose
+00001472  43F9 00002272            573      lea     INPUT_FILE4, a1
+00001478  45F9 000D342A            574      lea     FILEBUFFER4, a2
+0000147E  223C 0007E93F            575      move.l  #FILESIZE3,d1
+00001484  6100 FBE4                576      bsr     bmp_load
+00001488  B03C 0000                577      cmp.b   #0, d0
+0000148C  6600 0004                578      bne     .error
+00001490  4E75                     579      rts
+00001492                           580  .error
+00001492  21C0 0001                581      move.l  d0, 1
+00001496  4E75                     582      rts
+00001498                           583      
+00001498                           584  * clear whole screen
+00001498                           585  clearScreen
+00001498  103C 000B                586      move.b  #CLEAR_SCREEN_COMMAND,d0
+0000149C  223C 0000FF00            587      move.l  #CLEAR_SCREEN_MAGIC_VAL,d1
+000014A2  4E4F                     588      TRAP    #15
+000014A4  4E75                     589      rts
+000014A6                           590  * Player image is 74 * 80
+000014A6                           591  * rect x is 40, y is 65
+000014A6                           592  * rect start point [20, 70]
+000014A6                           593  drawPlayer:
+000014A6  4281                     594      clr.l    d1
+000014A8  4282                     595      clr.l    d2     // clear d1d2, since later will move word into d1d2
+000014AA  48E7 7070                596      movem.l  d1-d3/a1-a3, -(sp)
+000014AE                           597      
+000014AE  45F9 00002300            598      lea      PLAYER_X, a2
+000014B4  47F9 00002302            599      lea      PLAYER_Y, a3
+000014BA                           600      
+000014BA  3212                     601      move.w   (a2),d1
+000014BC  3413                     602      move.w   (a3),d2
+000014BE                           603      
+000014BE  0C79 0001 00002358       604      cmp.w    #1, is_attacking
+000014C6  6700 0012                605      beq      .attackDir
+000014CA                           606      *move.w   #1, player_facing
+000014CA  0C79 0000 00002356       607      cmp.w    #0, player_facing
+000014D2  6700 011A                608      beq      .loadLeft
+000014D6  6000 012C                609      bra      .loadRight
+000014DA                           610  .attackDir
+000014DA  0C79 0000 00002330       611      cmp.w    #0, attack_dir
+000014E2  6700 0088                612      beq      .attackL
+000014E6  6000 0002                613      bra      .attackR
+000014EA                           614  .attackR
+000014EA  33FC 0001 00002330       615      move.w  #1, attack_dir
+000014F2  43F9 002FBB66            616      lea    FILEBUFFER6, a1
+000014F8  45F9 0000241A            617      lea    attackR_spriteFrames, a2
+000014FE  47F9 00002354            618      lea    attack_frame, a3
+00001504                           619      
+00001504  0C79 0005 00002354       620      cmp.w   #5, attack_frame
+0000150C  6700 0006                621      beq     .resetARFrame
+00001510  6000 0036                622      bra     .noARFreset
+00001514                           623  .resetARFrame
+00001514  33FC 0000 00002354       624      move.w  #0, attack_frame
+0000151C  33FC 0000 00002358       625      move.w  #0, is_Attacking
+00001524  33FC 0001 00002342       626      move.w  #1, projectileActive
+0000152C  33F9 00002302 00002348   627      move.w  PLAYER_Y, PROJECTILE_Y                      
+00001536  33F9 00002300 00002346   628      move.w  PLAYER_X, PROJECTILE_X
+00001540                           629      * update projectile
+00001540  0679 003C 00002346       630      add.w   #PROJECTILE_R_OFFSET, PROJECTILE_X
+00001548                           631  * in attack animation
+00001548                           632  .noARFreset
+00001548  3639 00002354            633      move.w  attack_frame, d3
+0000154E  C6FC 0008                634      mulu     #8, d3
+00001552  D5C3                     635      add.l    d3, a2
+00001554  3612                     636      move.w   (a2),d3
+00001556  382A 0002                637      move.w   2(a2),d4
+0000155A  3A2A 0004                638      move.w   4(a2),d5
+0000155E  3C2A 0006                639      move.w   6(a2),d6
+00001562                           640      
+00001562  5279 00002354            641      add.w   #1, attack_frame
+00001568  6000 00D2                642      bra     .return
+0000156C                           643  .attackL
+0000156C  33FC 0000 00002330       644      move.w  #0, attack_dir
+00001574  43F9 00329DA6            645      lea    FILEBUFFER7, a1
+0000157A  45F9 00002442            646      lea    attackL_spriteFrames, a2
+00001580  47F9 00002354            647      lea    attack_frame, a3
+00001586                           648      
+00001586  0C79 0005 00002354       649      cmp.w   #5, attack_frame
+0000158E  6700 0006                650      beq     .resetALFrame
+00001592  6000 0036                651      bra     .noALFreset
+00001596                           652  .resetALFrame
+00001596  33FC 0000 00002354       653      move.w  #0, attack_frame
+0000159E  33FC 0000 00002358       654      move.w  #0, is_Attacking
+000015A6  33FC 0001 00002342       655      move.w  #1, projectileActive
+000015AE  33F9 00002302 00002348   656      move.w  PLAYER_Y, PROJECTILE_Y                      
+000015B8  33F9 00002300 00002346   657      move.w  PLAYER_X, PROJECTILE_X
+000015C2                           658      
+000015C2                           659      * update projectile
+000015C2  0479 0014 00002346       660      sub.w   #PROJECTILE_X_OFFSET, PROJECTILE_X
+000015CA                           661  * in attack animation
+000015CA                           662  .noALFreset
+000015CA  3639 00002354            663      move.w  attack_frame, d3
+000015D0  C6FC 0008                664      mulu     #8, d3
+000015D4  D5C3                     665      add.l    d3, a2
+000015D6  3612                     666      move.w   (a2),d3
+000015D8  382A 0002                667      move.w   2(a2),d4
+000015DC  3A2A 0004                668      move.w   4(a2),d5
+000015E0  3C2A 0006                669      move.w   6(a2),d6
+000015E4                           670      
+000015E4  5279 00002354            671      add.w   #1, attack_frame
+000015EA  6000 0050                672      bra     .return
+000015EE                           673  
+000015EE                           674  * move left animation
+000015EE                           675  .loadLeft      
+000015EE  43F9 0000246A            676      lea      FILEBUFFER, a1
+000015F4  45F9 000023DA            677      lea      playerL_spriteFrames, a2
+000015FA  47F9 00002350            678      lea      playerL_frame, a3
+00001600  6000 0014                679      bra      .loaded
+00001604                           680  * move right animation
+00001604                           681  .loadRight  
+00001604  43F9 002CD926            682      lea      FILEBUFFER5, a1
+0000160A  45F9 0000239A            683      lea      playerR_spriteFrames, a2
+00001610  47F9 00002352            684      lea      playerR_frame, a3
+00001616                           685  .loaded  
+00001616                           686      * if frame reach last, reset to 0
+00001616  0C53 0008                687      cmp.w    #staff_frame_num, (a3)
+0000161A  6700 0006                688      beq      .resetFrame
+0000161E  6000 0006                689      bra      .continue
+00001622                           690  .resetFrame
+00001622  36BC 0000                691      move.w   #0, (a3)
+00001626                           692  .continue
+00001626                           693      * set param for bmp_draw
+00001626                           694      *move.w   #6, playerL_frame
+00001626  3613                     695      move.w   (a3),d3
+00001628  C6FC 0008                696      mulu     #8, d3
+0000162C  D5C3                     697      add.l    d3, a2
+0000162E  3612                     698      move.w   (a2),d3
+00001630  382A 0002                699      move.w   2(a2),d4
+00001634  3A2A 0004                700      move.w   4(a2),d5
+00001638  3C2A 0006                701      move.w   6(a2),d6
+0000163C                           702      *add.w    #1, playerL_frame
+0000163C                           703   
+0000163C                           704      *move.l   #0, d3
+0000163C                           705      *move.l   #70, d4
+0000163C                           706      *move.l   #70, d5
+0000163C                           707      *move.l   #65, d6
+0000163C                           708  .return
+0000163C  6100 FB02                709      bsr      bmp_draw
+00001640  B07C 0000                710      cmp      #0, d0
+00001644  6600 0008                711      bne      .error
+00001648  4CDF 0E0E                712      movem.l  (sp)+,d1-d3/a1-a3
+0000164C  4E75                     713      rts
+0000164E                           714  .error
+0000164E  700D                     715      moveq   #TASK_PRINT, d0
+00001650  43F9 000022CE            716      lea     ErrorLabel, a1
+00001656  4E4F                     717      trap    #15
+00001658  4CDF 0E0E                718      movem.l  (sp)+,d1-d3/a1-a3
+0000165C  4E75                     719      rts
+0000165E                           720  
+0000165E                           721  
+0000165E                           722  * this is the digit UI
+0000165E                           723  drawUI:
+0000165E  48E7 7E00                724      movem.l d1-d6, -(sp)
+00001662                           725      *move.l  d0, d3
+00001662  2A01                     726      move.l  d1, d5
+00001664  223C 000000FF            727      move.l  #RED,d1
+0000166A  103C 0051                728      move.b  #SET_FILL_COLOR_COMMAND,d0
+0000166E  4E4F                     729      TRAP    #15
+00001670                           730      
+00001670  E19D                     731      rol.l   #8, d5
+00001672  2C05                     732      move.l  d5, d6
+00001674  CCBC 00000001            733      and.l   #bitmask, d6
+0000167A  BCBC 00000001            734      cmp.l   #1, d6
+00001680  6700 0006                735      beq     .segA
+00001684  6000 0018                736      bra     .preSegB
+00001688                           737  .segA
+00001688                           738      * Tenth Digit
+00001688                           739      * seg A
+00001688  223C 000001C2            740      move.l  #450,d1
+0000168E  740A                     741      move.l  #10,d2
+00001690  263C 000001E0            742      move.l  #480,d3
+00001696  780F                     743      move.l  #15,d4
+00001698                           744  
+00001698  103C 0057                745      move.b  #DRAW_RECTANGLE_COMMAND,d0
+0000169C  4E4F                     746      TRAP    #15
+0000169E                           747  .preSegB
+0000169E  E99D                     748      rol.l   #4, d5
+000016A0  2C05                     749      move.l  d5, d6 
+000016A2  CCBC 00000001            750      and.l   #bitmask, d6 
+000016A8  BCBC 00000001            751      cmp.l   #1, d6
+000016AE  6700 0006                752      beq     .segB
+000016B2  6000 0018                753      bra     .preSegC
+000016B6                           754  .segB 
+000016B6                           755      * seg B
+000016B6  223C 000001DB            756      move.l  #475,d1
+000016BC  7411                     757      move.l  #17,d2
+000016BE  263C 000001E0            758      move.l  #480,d3
+000016C4  7825                     759      move.l  #37,d4
+000016C6                           760  
+000016C6  103C 0057                761      move.b  #DRAW_RECTANGLE_COMMAND,d0
+000016CA  4E4F                     762      TRAP    #15
+000016CC                           763  .preSegC
+000016CC  E99D                     764      rol.l   #4, d5
+000016CE  2C05                     765      move.l  d5, d6 
+000016D0  CCBC 00000001            766      and.l   #bitmask, d6
+000016D6  BCBC 00000001            767      cmp.l   #1, d6
+000016DC  6700 0006                768      beq     .segC
+000016E0  6000 0018                769      bra     .preSegD
+000016E4                           770  .segC
+000016E4                           771      * draw seg C
+000016E4  223C 000001DB            772      move.l  #475,d1
+000016EA  7430                     773      move.l  #48,d2
+000016EC  263C 000001E0            774      move.l  #480,d3
+000016F2  7844                     775      move.l  #68,d4
+000016F4                           776  
+000016F4  103C 0057                777      move.b  #DRAW_RECTANGLE_COMMAND,d0
+000016F8  4E4F                     778      TRAP    #15
+000016FA                           779  .preSegD
+000016FA  E99D                     780      rol.l   #4, d5
+000016FC  2C05                     781      move.l  d5, d6 
+000016FE  CCBC 00000001            782      and.l   #bitmask, d6
+00001704  BCBC 00000001            783      cmp.l   #1, d6
+0000170A  6700 0006                784      beq     .segD
+0000170E  6000 0018                785      bra     .preSegE
+00001712                           786  .segD
+00001712                           787      * draw seg D
+00001712  223C 000001C2            788      move.l  #450,d1
+00001718  7447                     789      move.l  #71,d2
+0000171A  263C 000001E0            790      move.l  #480,d3
+00001720  784C                     791      move.l  #76,d4
+00001722                           792  
+00001722  103C 0057                793      move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001726  4E4F                     794      TRAP    #15
+00001728                           795  .preSegE
+00001728  E99D                     796      rol.l   #4, d5
+0000172A  2C05                     797      move.l  d5, d6 
+0000172C  CCBC 00000001            798      and.l   #bitmask, d6
+00001732  BCBC 00000001            799      cmp.l   #1, d6
+00001738  6700 0006                800      beq     .segE
+0000173C  6000 0018                801      bra     .preSegF
+00001740                           802  .segE    
+00001740                           803      * draw seg E
+00001740  223C 000001C2            804      move.l  #450,d1
+00001746  7430                     805      move.l  #48,d2
+00001748  263C 000001C7            806      move.l  #455,d3
+0000174E  7844                     807      move.l  #68,d4
+00001750                           808      
+00001750  103C 0057                809      move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001754  4E4F                     810      TRAP    #15
+00001756                           811  .preSegF    
+00001756  E99D                     812      rol.l   #4, d5
+00001758  2C05                     813      move.l  d5, d6 
+0000175A  CCBC 00000001            814      and.l   #bitmask, d6
+00001760  BCBC 00000001            815      cmp.l   #1, d6
+00001766  6700 0006                816      beq     .segF
+0000176A  6000 0018                817      bra     .preSegG
+0000176E                           818  .segF
+0000176E                           819      * draw seg F
+0000176E  223C 000001C2            820      move.l  #450,d1
+00001774  7411                     821      move.l  #17,d2
+00001776  263C 000001C7            822      move.l  #455,d3
+0000177C  7825                     823      move.l  #37,d4
+0000177E                           824      
+0000177E  103C 0057                825      move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001782  4E4F                     826      TRAP    #15
+00001784                           827  .preSegG
+00001784  E99D                     828      rol.l   #4, d5
+00001786  2C05                     829      move.l  d5, d6 
+00001788  CCBC 00000001            830      and.l   #bitmask, d6
+0000178E  BCBC 00000001            831      cmp.l   #1, d6
+00001794  6700 0006                832      beq     .segG
+00001798  6000 0018                833      bra     .return
+0000179C                           834  .segG
+0000179C                           835      * seg G
+0000179C  223C 000001C2            836      move.l  #450,d1
+000017A2  7428                     837      move.l  #40,d2
+000017A4  263C 000001E0            838      move.l  #480,d3
+000017AA  782D                     839      move.l  #45,d4
+000017AC                           840  
+000017AC                           841  
+000017AC  103C 0057                842      move.b  #DRAW_RECTANGLE_COMMAND,d0
+000017B0  4E4F                     843      TRAP    #15
+000017B2                           844  .return
+000017B2  7200                     845      move.l  #0,d1
+000017B4  103C 0051                846      move.b  #SET_FILL_COLOR_COMMAND,d0
+000017B8  4E4F                     847      TRAP    #15
+000017BA                           848  
+000017BA  4CDF 007E                849      movem.l (sp)+,d1-d6
+000017BE  4E75                     850      rts
+000017C0                           851      
+000017C0                           852  * This is the tenth digit UI    
+000017C0                           853  drawUITenth:
+000017C0  48E7 FE00                854      movem.l d0-d6, -(sp)
+000017C4  2600                     855      move.l  d0, d3
+000017C6  2A01                     856      move.l  d1, d5
+000017C8  223C 000000FF            857      move.l  #RED,d1
+000017CE  103C 0051                858      move.b  #SET_FILL_COLOR_COMMAND,d0
+000017D2  4E4F                     859      TRAP    #15
+000017D4                           860      
+000017D4  E19D                     861      rol.l   #8, d5
+000017D6  2C05                     862      move.l  d5, d6
+000017D8  CCBC 00000001            863      and.l   #bitmask, d6
+000017DE  BCBC 00000001            864      cmp.l   #1, d6
+000017E4  6700 0006                865      beq     .segA
+000017E8  6000 0018                866      bra     .preSegB
+000017EC                           867  .segA
+000017EC                           868      * Tenth Digit
+000017EC                           869      * seg A
+000017EC  223C 00000190            870      move.l  #400,d1
+000017F2  740A                     871      move.l  #10,d2
+000017F4  263C 000001AE            872      move.l  #430,d3
+000017FA  780F                     873      move.l  #15,d4
+000017FC                           874  
+000017FC  103C 0057                875      move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001800  4E4F                     876      TRAP    #15
+00001802                           877  .preSegB
+00001802  E99D                     878      rol.l   #4, d5
+00001804  2C05                     879      move.l  d5, d6 
+00001806  CCBC 00000001            880      and.l   #bitmask, d6 
+0000180C  BCBC 00000001            881      cmp.l   #1, d6
+00001812  6700 0006                882      beq     .segB
+00001816  6000 0018                883      bra     .preSegC
+0000181A                           884  .segB 
+0000181A                           885      * seg B
+0000181A  223C 000001A9            886      move.l  #425,d1
+00001820  7411                     887      move.l  #17,d2
+00001822  263C 000001AE            888      move.l  #430,d3
+00001828  7825                     889      move.l  #37,d4
+0000182A                           890  
+0000182A  103C 0057                891      move.b  #DRAW_RECTANGLE_COMMAND,d0
+0000182E  4E4F                     892      TRAP    #15
+00001830                           893  .preSegC
+00001830  E99D                     894      rol.l   #4, d5
+00001832  2C05                     895      move.l  d5, d6 
+00001834  CCBC 00000001            896      and.l   #bitmask, d6
+0000183A  BCBC 00000001            897      cmp.l   #1, d6
+00001840  6700 0006                898      beq     .segC
+00001844  6000 0018                899      bra     .preSegD
+00001848                           900  .segC
+00001848                           901      * seg C
+00001848  223C 000001A9            902      move.l  #425,d1
+0000184E  7430                     903      move.l  #48,d2
+00001850  263C 000001AE            904      move.l  #430,d3
+00001856  7844                     905      move.l  #68,d4
+00001858                           906  
+00001858  103C 0057                907      move.b  #DRAW_RECTANGLE_COMMAND,d0
+0000185C  4E4F                     908      TRAP    #15
+0000185E                           909  .preSegD
+0000185E  E99D                     910      rol.l   #4, d5
+00001860  2C05                     911      move.l  d5, d6 
+00001862  CCBC 00000001            912      and.l   #bitmask, d6
+00001868  BCBC 00000001            913      cmp.l   #1, d6
+0000186E  6700 0006                914      beq     .segD
+00001872  6000 0018                915      bra     .preSegE
+00001876                           916  .segD
+00001876                           917      * seg D
+00001876  223C 00000190            918      move.l  #400,d1
+0000187C  7447                     919      move.l  #71,d2
+0000187E  263C 000001AE            920      move.l  #430,d3
+00001884  784C                     921      move.l  #76,d4
+00001886                           922  
+00001886  103C 0057                923      move.b  #DRAW_RECTANGLE_COMMAND,d0
+0000188A  4E4F                     924      TRAP    #15
+0000188C                           925  .preSegE
+0000188C  E99D                     926      rol.l   #4, d5
+0000188E  2C05                     927      move.l  d5, d6 
+00001890  CCBC 00000001            928      and.l   #bitmask, d6
+00001896  BCBC 00000001            929      cmp.l   #1, d6
+0000189C  6700 0006                930      beq     .segE
+000018A0  6000 0018                931      bra     .preSegF
+000018A4                           932  .segE    
+000018A4                           933      * seg E
+000018A4  223C 00000190            934      move.l  #400,d1
+000018AA  7430                     935      move.l  #48,d2
+000018AC  263C 00000195            936      move.l  #405,d3
+000018B2  7844                     937      move.l  #68,d4
+000018B4                           938      
+000018B4  103C 0057                939      move.b  #DRAW_RECTANGLE_COMMAND,d0
+000018B8  4E4F                     940      TRAP    #15
+000018BA                           941  .preSegF    
+000018BA  E99D                     942      rol.l   #4, d5
+000018BC  2C05                     943      move.l  d5, d6 
+000018BE  CCBC 00000001            944      and.l   #bitmask, d6
+000018C4  BCBC 00000001            945      cmp.l   #1, d6
+000018CA  6700 0006                946      beq     .segF
+000018CE  6000 0018                947      bra     .preSegG
+000018D2                           948  .segF
+000018D2                           949      * seg F
+000018D2  223C 00000190            950      move.l  #400,d1
+000018D8  7411                     951      move.l  #17,d2
+000018DA  263C 00000195            952      move.l  #405,d3
+000018E0  7825                     953      move.l  #37,d4
+000018E2                           954      
+000018E2  103C 0057                955      move.b  #DRAW_RECTANGLE_COMMAND,d0
+000018E6  4E4F                     956      TRAP    #15
+000018E8                           957  .preSegG
+000018E8  E99D                     958      rol.l   #4, d5
+000018EA  2C05                     959      move.l  d5, d6 
+000018EC  CCBC 00000001            960      and.l   #bitmask, d6
+000018F2  BCBC 00000001            961      cmp.l   #1, d6
+000018F8  6700 0006                962      beq     .segG
+000018FC  6000 0018                963      bra     .return
+00001900                           964  .segG
+00001900                           965      * seg G
+00001900  223C 00000190            966      move.l  #400,d1
+00001906  7428                     967      move.l  #40,d2
+00001908  263C 000001AE            968      move.l  #430,d3
+0000190E  782D                     969      move.l  #45,d4
+00001910                           970  
+00001910                           971  
+00001910  103C 0057                972      move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001914  4E4F                     973      TRAP    #15
+00001916                           974  .return
+00001916  7200                     975      move.l  #0,d1
+00001918  103C 0051                976      move.b  #SET_FILL_COLOR_COMMAND,d0
+0000191C  4E4F                     977      TRAP    #15
+0000191E                           978  
+0000191E  4CDF 007F                979      movem.l (sp)+,d0-d6
+00001922  4E75                     980      rts
+00001924                           981  
+00001924                           982      
+00001924                           983  drawStaff:
+00001924                           984      * check if projectile is active
+00001924  4280                     985      clr.l    d0
+00001926  4281                     986      clr.l    d1
+00001928  4282                     987      clr.l    d2     // clear d1d2, since later will move word into d1d2
+0000192A  48E7 7060                988      movem.l  d1-d3/a1-a2, -(sp)
+0000192E  0C79 0000 00002342       989      cmp.w   #0, projectileActive    
+00001936  6700 005E                990      beq     .return
+0000193A                           991      * when active, check current frame and get data to display
+0000193A  43F9 000356AA            992      lea      FILEBUFFER2, a1
+00001940  3239 00002346            993      move.w   projectile_x,d1
+00001946  3439 00002348            994      move.w   projectile_y,d2
+0000194C  45F9 0000235A            995      lea      staff_spriteFrames, a2
+00001952                           996      * if frame reach last, reset to 0
+00001952  0C79 0008 0000234E       997      cmp.w    #staff_frame_num, staff_frame
+0000195A  6700 0006                998      beq      .resetFrame
+0000195E  6000 000A                999      bra      .continue
+00001962                          1000  .resetFrame
+00001962  33FC 0000 0000234E      1001      move.w   #0, staff_frame
+0000196A                          1002  .continue
+0000196A                          1003      * set param for bmp_draw
+0000196A  3639 0000234E           1004      move.w   staff_frame, d3
+00001970  C6FC 0008               1005      mulu     #8, d3
+00001974  D5C3                    1006      add.l    d3, a2
+00001976  3612                    1007      move.w   (a2),d3
+00001978  382A 0002               1008      move.w   2(a2),d4
+0000197C  3A2A 0004               1009      move.w   4(a2),d5
+00001980  3C2A 0006               1010      move.w   6(a2),d6
+00001984  5279 0000234E           1011      add.w    #1, staff_frame
+0000198A  6100 F7B4               1012      bsr      bmp_draw
+0000198E  B07C 0000               1013      cmp      #0, d0
+00001992  6600 0008               1014      bne      .error
+00001996                          1015  .return
+00001996  4CDF 060E               1016      movem.l  (sp)+,d1-d3/a1-a2
+0000199A  4E75                    1017      rts
+0000199C                          1018  .error
+0000199C  700D                    1019      moveq   #TASK_PRINT, d0
+0000199E  43F9 000022CE           1020      lea     ErrorLabel, a1
+000019A4  4CDF 060E               1021      movem.l  (sp)+,d1-d3/a1-a2
+000019A8  4E4F                    1022      trap    #15
+000019AA                          1023  
+000019AA                          1024  
+000019AA                          1025  EnemySpawn:
+000019AA                          1026      *d0 is enemy_num
+000019AA                          1027      *d1 is enemyarray index
+000019AA                          1028      *d2 is current enemy isActive bool
+000019AA                          1029      *a1 is enemy_active array address
+000019AA                          1030      *a2 is enemy_pos array address
+000019AA  48E7 FFFE               1031      movem.l ALL_REG, -(sp) 
+000019AE  203C 00000008           1032      move.l  #ENEMY_NUM, d0
+000019B4  7200                    1033      move.l  #0, d1
+000019B6  43F9 00002304           1034      lea     ENEMY_ACTIVE, a1
+000019BC  47F9 00002332           1035      lea     ENEMY_MOVE_DIST, a3
+000019C2                          1036  .loop
+000019C2  B001                    1037      cmp.b   d1, d0
+000019C4  6700 005C               1038      beq     .return
+000019C8                          1039      * find inactive enemy and set it to active
+000019C8  1411                    1040      move.b  (a1),d2
+000019CA  B4BC 00000000           1041      cmp.l   #0, d2
+000019D0  6700 0006               1042      beq     .setActive
+000019D4  6000 0044               1043      bra     .continueLoop
+000019D8                          1044  .setActive
+000019D8                          1045      * Find cur enemy pos in enemy_pos array
+000019D8  12BC 0001               1046      move.b  #1, (a1)
+000019DC  45F9 0000230C           1047      lea     ENEMY_POS, a2
+000019E2  C2FC 0004               1048      mulu    #4, d1
+000019E6  D5C1                    1049      add.l   d1, a2
+000019E8  82FC 0004               1050      divu    #4, d1
+000019EC                          1051      
+000019EC                          1052      * compute enemy x
+000019EC  2601                    1053      move.l  d1, d3
+000019EE  C6FC 0032               1054      mulu    #50, d3
+000019F2  3483                    1055      move.w  d3,(a2) // enemy x
+000019F4  357C 0258 0002          1056      move.w  #600,2(a2)
+000019FA                          1057      * set random speed for enemy
+000019FA  4EB9 000020BE           1058      jsr     random
+00001A00  0280 0000000F           1059      andi.l  #$0000000F, d0
+00001A06  B03C 0000               1060      cmp.b   #0, d0
+00001A0A  6700 0006               1061      beq     .increment
+00001A0E  6000 0004               1062      bra     .postIncrement
+00001A12                          1063  .increment
+00001A12                          1064      * if random return 0, set it to 3
+00001A12  5640                    1065      addq    #3, d0
+00001A14                          1066  .postIncrement
+00001A14  1680                    1067      move.b  d0, (a3)
+00001A16                          1068      * after set one enemy, exit loop
+00001A16  6000 000A               1069      bra     .return
+00001A1A                          1070  .continueLoop
+00001A1A  5281                    1071      add.l   #1, d1
+00001A1C  5289                    1072      add.l   #1, a1
+00001A1E  524B                    1073      addq    #1, a3
+00001A20  60A0                    1074      bra     .loop
+00001A22                          1075  .return
+00001A22  4CDF 7FFF               1076      movem.l (sp)+,ALL_REG
+00001A26  4E75                    1077      rts
+00001A28                          1078  
+00001A28                          1079  * delay frame api
+00001A28                          1080  delayFrame
+00001A28  48E7 6000               1081      movem.l d1-d2, -(sp)
+00001A2C  7017                    1082      move.l  #DELAY_FRAME, d0
+00001A2E  7232                    1083      move.l  #FRAME_DELAY_TIME, d1
+00001A30  4E4F                    1084      TRAP    #15
+00001A32  4CDF 0006               1085      movem.l (sp)+, d1-d2
+00001A36  4E75                    1086      rts
+00001A38                          1087      
+00001A38                          1088  * DrawAllEnemies - Loop through enemy active, if byte is 01, draw the enemy
+00001A38                          1089  drawAllEnemies:
+00001A38  48E7 FFFE               1090      movem.l ALL_REG, -(sp) 
+00001A3C  203C 00000008           1091      move.l  #ENEMY_NUM, d0
+00001A42  7200                    1092      move.l  #0, d1
+00001A44  43F9 00002304           1093      lea     ENEMY_ACTIVE, a1
+00001A4A  45F9 0000230C           1094      lea     ENEMY_POS, a2
+00001A50  47F9 00002332           1095      lea     ENEMY_MOVE_DIST, a3
+00001A56                          1096      
+00001A56                          1097  .loop
+00001A56                          1098      * loop through all enemy, return
+00001A56  B001                    1099      cmp.b   d1, d0
+00001A58  6700 0024               1100      beq     .return
+00001A5C  1411                    1101      move.b  (a1),d2
+00001A5E                          1102      * enemy is active, draw enemy
+00001A5E  B4BC 00000001           1103      cmp.l   #1, d2
+00001A64  6700 0006               1104      beq     .drawUpdateIndex
+00001A68  6000 000C               1105      bra     .updateLoop
+00001A6C                          1106  .drawUpdateIndex
+00001A6C                          1107      * set enemy speed and for update api
+00001A6C  1C13                    1108      move.b  (a3),d6
+00001A6E                          1109      * update and draw the enemy
+00001A6E  6100 029E               1110      bsr     updateEachEnemy
+00001A72  6100 0010               1111      bsr     drawEnemy
+00001A76                          1112  .updateLoop
+00001A76                          1113      * update loop counters
+00001A76  5201                    1114      add.b   #1, d1
+00001A78  5289                    1115      add.l   #1, a1
+00001A7A  528B                    1116      add.l   #1, a3
+00001A7C  60D8                    1117      bra     .loop    
+00001A7E                          1118      
+00001A7E                          1119  .return
+00001A7E  4CDF 7FFF               1120      movem.l (sp)+,ALL_REG
+00001A82  4E75                    1121      rts
+00001A84                          1122      
+00001A84                          1123  * d1 is the index of the enemy
+00001A84                          1124  drawEnemy:
+00001A84  48E7 FFFE               1125      movem.l  ALL_REG,-(sp)
+00001A88  43F9 000306AA           1126      lea      FILEBUFFER1, a1
+00001A8E                          1127      * get current enemy pos from enemy_pos array
+00001A8E  45F9 0000230C           1128      lea     ENEMY_POS, a2
+00001A94  C2FC 0004               1129      mulu    #4, d1
+00001A98  D5C1                    1130      add.l   d1, a2
+00001A9A  3212                    1131      move.w  (a2),d1
+00001A9C  342A 0002               1132      move.w  2(a2),d2
+00001AA0                          1133      * set param for bmp_draw
+00001AA0  7605                    1134      move.l   #5, d3
+00001AA2  7819                    1135      move.l   #25, d4
+00001AA4  7A26                    1136      move.l   #ENEMY_WIDTH, d5
+00001AA6  7C14                    1137      move.l   #ENEMY_HEIGHT, d6
+00001AA8                          1138      
+00001AA8  6100 F696               1139      bsr      bmp_draw
+00001AAC  B07C 0000               1140      cmp      #0, d0
+00001AB0  6600 0008               1141      bne      .error
+00001AB4  4CDF 7FFF               1142      movem.l  (sp)+,ALL_REG
+00001AB8  4E75                    1143      rts
+00001ABA                          1144  .error
+00001ABA  700D                    1145      moveq   #TASK_PRINT, d0
+00001ABC  43F9 000022CE           1146      lea     ErrorLabel, a1
+00001AC2  4E4F                    1147      trap    #15
+00001AC4  4E75                    1148      rts
+00001AC6                          1149  
+00001AC6                          1150  drawHealthBar
+00001AC6  48E7 FFFE               1151          movem.l ALL_REG,-(sp)
+00001ACA  223C 00FF0000           1152          move.l  #POWER_METER_COLOR,d1
+00001AD0  103C 0050               1153          move.b  #SET_PEN_COLOR_COMMAND,d0
+00001AD4  4E4F                    1154          TRAP    #15
+00001AD6                          1155          * draw health bar outside
+00001AD6  7228                    1156          move.l  #POWER_METER_LEFT,d1
+00001AD8  740F                    1157          move.l  #POWER_METER_TOP,d2
+00001ADA  263C 000000FA           1158          move.l  #POWER_METER_RIGHT,d3
+00001AE0  781E                    1159          move.l  #POWER_METER_BOTTOM,d4
+00001AE2                          1160  
+00001AE2  103C 0057               1161          move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001AE6  4E4F                    1162          TRAP    #15
+00001AE8                          1163          
+00001AE8                          1164          * set inside health bar color
+00001AE8  2E01                    1165          move.l  d1,d7
+00001AEA  223C 000000FF           1166          move.l  #POWER_METER_INSIDE_COLOR,d1
+00001AF0  103C 0051               1167          move.b  #SET_FILL_COLOR_COMMAND,d0
+00001AF4  4E4F                    1168          TRAP    #15
+00001AF6                          1169          * draw inside health bar
+00001AF6  2207                    1170          move.l  d7,d1
+00001AF8  5281                    1171          addi.l  #1,d1
+00001AFA  5282                    1172          addi.l  #1,d2
+00001AFC  5384                    1173          subi.l  #1,d4
+00001AFE                          1174          
+00001AFE  0483 00000028           1175          sub.l   #POWER_METER_LEFT, d3   
+00001B04  41F9 0000233E           1176          lea     powerMeterPercent,a0
+00001B0A  2010                    1177          move.l  (a0),d0
+00001B0C                          1178  
+00001B0C  C6C0                    1179          mulu    d0, d3
+00001B0E  86FC 0064               1180          divu    #100, d3
+00001B12  D681                    1181          add.l   d1, d3
+00001B14                          1182          
+00001B14  103C 0057               1183          move.b  #DRAW_RECTANGLE_COMMAND,d0
+00001B18  4E4F                    1184          TRAP    #15
+00001B1A                          1185          
+00001B1A                          1186          * reset fill color
+00001B1A  7200                    1187          move.l  #0,d1
+00001B1C  103C 0051               1188          move.b  #SET_FILL_COLOR_COMMAND,d0
+00001B20  4E4F                    1189          TRAP    #15
+00001B22                          1190  
+00001B22  4CDF 7FFF               1191          movem.l (sp)+,ALL_REG
+00001B26  4E75                    1192          rts     
+00001B28                          1193  
+00001B28                          1194  * simple subroutine that swap buffers  
+00001B28                          1195  swapBuffers:
+00001B28  103C 005E               1196      move.b  #REPAINT_SCREEN_TRAP_CODE,d0
+00001B2C  4E4F                    1197      TRAP    #15
+00001B2E  4E75                    1198      rts  
+00001B30                          1199  
+00001B30                          1200      
+00001B30                          1201  *check key codes, then call appropriate functions based on which key entered
+00001B30                          1202  handleInput:
+00001B30  48E7 FFFE               1203      movem.l ALL_REG,-(sp)
+00001B34                          1204      
+00001B34                          1205      * Handle wasd movement key press
+00001B34                          1206      *move.l  #(KEY_LEFT_INPUT<<24 + KEY_UP_INPUT<<16 + KEY_RIGHT_INPUT<<8 + KEY_DOWN_INPUT),d1
+00001B34  223C 41574453           1207      move.l  #(KEY_A_INPUT<<24 + KEY_W_INPUT<<16 + KEY_D_INPUT<<8 + KEY_S_INPUT),d1
+00001B3A  103C 0013               1208      move.b  #GET_USER_INPUT_COMMAND,d0
+00001B3E  4E4F                    1209      TRAP    #15
+00001B40  2401                    1210      move.l  d1, d2
+00001B42  0282 FF000000           1211      andi.l  #$FF000000,d2
+00001B48  6600 005A               1212      bne     .keyLeftInput
+00001B4C  2401                    1213      move.l  d1, d2
+00001B4E  0282 00FF0000           1214      andi.l  #$00FF0000,d2
+00001B54  6600 0080               1215      bne     .keyUpInput
+00001B58  2401                    1216      move.l  d1, d2
+00001B5A  0282 0000FF00           1217      andi.l  #$0000FF00,d2
+00001B60  6600 00B8               1218      bne     .keyRightInput
+00001B64  2401                    1219      move.l  d1, d2
+00001B66  0282 000000FF           1220      andi.l  #$000000FF,d2
+00001B6C  6600 00E2               1221      bne     .keyDownInput
+00001B70                          1222      
+00001B70                          1223      * Handle left right space attack key press
+00001B70  223C 00252720           1224      move.l  #(KEY_LEFT_INPUT<<16 + KEY_RIGHT_INPUT<<8 + KEY_SPACE_INPUT),d1
+00001B76  103C 0013               1225      move.b  #GET_USER_INPUT_COMMAND,d0
+00001B7A  4E4F                    1226      TRAP    #15
+00001B7C  2401                    1227      move.l  d1, d2
+00001B7E  0282 00FF0000           1228      andi.l  #$00FF0000,d2
+00001B84  6600 0108               1229      bne     .AttackLeftInput
+00001B88  2401                    1230      move.l  d1, d2
+00001B8A  0282 0000FF00           1231      andi.l  #$0000FF00,d2
+00001B90  6600 00FC               1232      bne     .AttackRightInput
+00001B94  2401                    1233      move.l  d1, d2
+00001B96  0282 000000FF           1234      andi.l  #$000000FF,d2
+00001B9C  6600 00F0               1235      bne     .ThrowStaffInput
+00001BA0                          1236          
+00001BA0  6000 0166               1237      bra     .doneInput 
+00001BA4                          1238  .keyLeftInput
+00001BA4                          1239      *player moveLeft boundary check
+00001BA4  3039 00002300           1240      move.w  PLAYER_X, d0
+00001BAA  0440 0019               1241      sub.w   #PLAYER_MOVE_DIST, d0
+00001BAE  B0BC 00000000           1242      cmp.l   #0, d0
+00001BB4  6F00 0152               1243      ble     .doneInput
+00001BB8                          1244      * move left
+00001BB8  0479 0019 00002300      1245      sub.w   #PLAYER_MOVE_DIST, PLAYER_X
+00001BC0  5279 00002350           1246      add.w   #1, playerL_frame
+00001BC6  33FC 0000 00002356      1247      move.w  #0, player_facing
+00001BCE  6100 F8D6               1248      bsr     drawPlayer
+00001BD2  6000 0134               1249      bra     .doneInput
+00001BD6                          1250      
+00001BD6                          1251  .keyUpInput
+00001BD6                          1252      * player move up boundary check
+00001BD6  3039 00002302           1253      move.w  PLAYER_Y, d0
+00001BDC  0440 0019               1254      sub.w   #PLAYER_MOVE_DIST, d0
+00001BE0  B0BC 00000041           1255      cmp.l   #PLAYER_HEIGHT, d0
+00001BE6  6F00 0120               1256      ble     .doneInput
+00001BEA                          1257      * Move up
+00001BEA  0479 0019 00002302      1258      sub.w   #PLAYER_MOVE_DIST, PLAYER_Y
+00001BF2                          1259      * set player frame for walking left or right
+00001BF2  0C79 0000 00002356      1260      cmp.w   #0, player_facing
+00001BFA  6700 0006               1261      beq     .incLeft
+00001BFE  6000 000C               1262      bra     .incRight
+00001C02                          1263  .incLeft
+00001C02  5279 00002350           1264      add.w   #1, playerL_frame
+00001C08  6000 0008               1265      bra     .inced
+00001C0C                          1266  .incRight
+00001C0C  5279 00002352           1267      add.w   #1, playerR_frame
+00001C12                          1268  .inced
+00001C12  6100 F892               1269      bsr     drawPlayer
+00001C16  6000 00F0               1270      bra     .doneInput
+00001C1A                          1271      
+00001C1A                          1272  .keyRightInput
+00001C1A                          1273      * player moveRight boundary check
+00001C1A  3039 00002300           1274      move.w  PLAYER_X, d0
+00001C20  0640 0019               1275      add.w   #PLAYER_MOVE_DIST, d0
+00001C24  0640 0028               1276      add.w   #PLAYER_WIDTH,d0
+00001C28  B0BC 00000280           1277      cmp.l   #640, d0
+00001C2E  6C00 00D8               1278      bge     .doneInput
+00001C32                          1279      * Move right
+00001C32  0679 0019 00002300      1280      add.w   #PLAYER_MOVE_DIST, PLAYER_X
+00001C3A  5279 00002352           1281      add.w   #1, playerR_frame
+00001C40  33FC 0001 00002356      1282      move.w  #1, player_facing
+00001C48  6100 F85C               1283      bsr     drawPlayer
+00001C4C  6000 00BA               1284      bra     .doneInput
+00001C50                          1285      
+00001C50                          1286  .keyDownInput
+00001C50                          1287      * player moveDown boundary check
+00001C50  3039 00002302           1288      move.w  PLAYER_Y, d0
+00001C56  0640 0019               1289      add.w   #PLAYER_MOVE_DIST, d0
+00001C5A  B0BC 000001E0           1290      cmp.l   #480, d0
+00001C60  6C00 00A6               1291      bge     .doneInput
+00001C64                          1292      * Move down
+00001C64  0679 0019 00002302      1293      add.w   #PLAYER_MOVE_DIST, PLAYER_Y
+00001C6C                          1294      * set player frame for walking left or right
+00001C6C  0C79 0000 00002356      1295      cmp.w   #0, player_facing
+00001C74  678C                    1296      beq     .incLeft
+00001C76  6094                    1297      bra     .incRight
+00001C78                          1298  .incLeft1
+00001C78  5279 00002350           1299      add.w   #1, playerL_frame
+00001C7E  6092                    1300      bra     .inced
+00001C80                          1301  .incRight1
+00001C80  5279 00002352           1302      add.w   #1, playerR_frame
+00001C86                          1303  .inced1
+00001C86  6100 F81E               1304      bsr     drawPlayer
+00001C8A  6000 007C               1305      bra     .doneInput
+00001C8E                          1306  * this is not implemented    
+00001C8E                          1307  .AttackLeftInput
+00001C8E                          1308      *moveq   #TASK_PRINT, d0
+00001C8E                          1309      *lea     DebugLabel, a1
+00001C8E                          1310      *trap    #15
+00001C8E                          1311      *bra     .doneInput
+00001C8E                          1312  * this is not implemented 
+00001C8E                          1313  .AttackRightInput
+00001C8E                          1314      *moveq   #TASK_PRINT, d0
+00001C8E                          1315      *lea     DebugLabel, a1
+00001C8E                          1316      *trap    #15
+00001C8E                          1317      *bra     .doneInput
+00001C8E                          1318  * space!
+00001C8E                          1319  .ThrowStaffInput
+00001C8E                          1320      * if projectile is thrown, cannot throw again
+00001C8E  0C79 0001 00002344      1321      cmp.w   #1, projectileThrown
+00001C96  6700 0070               1322      beq     .doneInput
+00001C9A                          1323      
+00001C9A                          1324      * set projectile to active for drawing
+00001C9A  33FC 0000 0000234E      1325      move.w  #0, staff_frame                             ; init staff_frame
+00001CA2  33FC 0001 00002358      1326      move.w  #1, is_attacking                            ; init attack animation
+00001CAA  33FC 0000 00002354      1327      move.w  #0, attack_frame
+00001CB2  33F9 00002356 00002330  1328      move.w  player_facing, attack_dir                   ; set playerfacing as attack direction
+00001CBC                          1329      *move.w  #1, projectileActive                        ; set projectile as active
+00001CBC  33FC 002D 0000234A      1330      move.w  #PROJECTILE_INIT_SPEED, projectile_speed    ; set projectile init speed
+00001CC4  33FC 0001 00002344      1331      move.w  #1, projectileThrown                        ; set projectile as thrown
+00001CCC                          1332      * init projectile init pos
+00001CCC                          1333      *move.w  PLAYER_Y, PROJECTILE_Y                      
+00001CCC                          1334      *move.w  PLAYER_X, PROJECTILE_X
+00001CCC                          1335      
+00001CCC                          1336      *cmp.w   #0, player_dir
+00001CCC                          1337      *beq     .playerLeft
+00001CCC                          1338      
+00001CCC                          1339      *cmp.w   #1, player_dir
+00001CCC                          1340      *beq     .playerRight
+00001CCC                          1341      
+00001CCC                          1342      *cmp.w   #2, player_dir
+00001CCC                          1343      *beq     .playerUp
+00001CCC                          1344      
+00001CCC                          1345      *cmp.w   #3, player_dir
+00001CCC                          1346      *beq     .playerDown
+00001CCC                          1347      
+00001CCC                          1348  .playerLeft
+00001CCC  0479 0014 00002346      1349      sub.w   #PROJECTILE_X_OFFSET, PROJECTILE_X
+00001CD4  6000 0032               1350      bra     .doneInput
+00001CD8                          1351  .playerRight
+00001CD8  0679 003C 00002346      1352      add.w   #PROJECTILE_R_OFFSET, PROJECTILE_X
+00001CE0  6000 0026               1353      bra     .doneInput
+00001CE4                          1354  * not used
+00001CE4                          1355  .playerUp
+00001CE4  0679 0014 00002346      1356      add.w   #PROJECTILE_D_OFFSET, PROJECTILE_X
+00001CEC  0479 0055 00002348      1357      sub.w   #PROJECTILE_U_OFFSET, PROJECTILE_Y
+00001CF4  6000 0012               1358      bra     .doneInput
+00001CF8                          1359  * not used
+00001CF8                          1360  .playerDown
+00001CF8  0679 0014 00002346      1361      add.w   #PROJECTILE_D_OFFSET, PROJECTILE_X
+00001D00  0679 0014 00002348      1362      add.w   #PROJECTILE_X_OFFSET, PROJECTILE_Y
+00001D08                          1363  .doneInput
+00001D08  4CDF 7FFF               1364      movem.l (sp)+,ALL_REG
+00001D0C                          1365          
+00001D0C  4E75                    1366      rts
+00001D0E                          1367      
+00001D0E                          1368  * Enemy moves at a fixed rate towards player
+00001D0E                          1369  * d1 is the index of the enemy
+00001D0E                          1370  * d6 is enemy speed
+00001D0E                          1371  updateEachEnemy:
+00001D0E  48E7 FFFE               1372      movem.l ALL_REG,-(sp)
+00001D12  2E01                    1373      move.l  d1, d7  // this is enemy index
+00001D14                          1374      
+00001D14                          1375      * get enemy position for this instance
+00001D14  45F9 0000230C           1376      lea     ENEMY_POS, a2
+00001D1A  C2FC 0004               1377      mulu    #4, d1
+00001D1E  D5C1                    1378      add.l   d1, a2
+00001D20  3012                    1379      move.w  (a2),d0 // enemy x
+00001D22  342A 0002               1380      move.w  2(a2),d2 // enemy y
+00001D26                          1381      
+00001D26                          1382      * check collision with projectile
+00001D26  3239 00002346           1383      move.w  projectile_x, d1
+00001D2C  3639 00002348           1384      move.w  projectile_y, d3
+00001D32  6100 0334               1385      bsr     checkProjectileCol
+00001D36                          1386      
+00001D36  B8BC 00000001           1387      cmp.l   #1, d4
+00001D3C  6700 0006               1388      beq     .die
+00001D40  6000 001E               1389      bra     .live
+00001D44                          1390  * collided with projecile
+00001D44                          1391  .die
+00001D44                          1392      * play player hit sound
+00001D44  7048                    1393      move.l  #PLAY_SOUND_COMMAND, d0
+00001D46  7201                    1394      move.l  #1, d1
+00001D48  4E4F                    1395      trap    #15
+00001D4A                          1396      * set enemy active to false
+00001D4A  49F9 00002304           1397      lea     ENEMY_ACTIVE, a4
+00001D50  D9C7                    1398      add.l   d7, a4
+00001D52  18BC 0000               1399      move.b  #0, (a4)
+00001D56                          1400      * increment enemy hit counter
+00001D56  5279 0000234C           1401      add.w   #1, enemy_hit
+00001D5C  6000 0084               1402      bra     .return
+00001D60                          1403  .live
+00001D60                          1404      * not collided the check player collision
+00001D60  43F9 00002300           1405      lea     PLAYER_X, a1
+00001D66  3211                    1406      move.w  (a1),d1
+00001D68  47F9 00002302           1407      lea     PLAYER_Y, a3
+00001D6E  3613                    1408      move.w  (a3),d3 
+00001D70  6100 0298               1409      bsr     checkCollisionWithPlayer
+00001D74                          1410      
+00001D74  B83C 0003               1411      cmp.b   #3, d4  // if collide with player, attack
+00001D78  6700 0006               1412      beq     .enemyAttack    
+00001D7C  6000 002C               1413      bra     .enemyNotAttack
+00001D80                          1414  .enemyAttack
+00001D80                          1415      * play attack sound
+00001D80  7048                    1416      move.l  #PLAY_SOUND_COMMAND, d0
+00001D82  7202                    1417      move.l  #2, d1
+00001D84  4E4F                    1418      trap    #15
+00001D86                          1419      * set enemy active as false
+00001D86  49F9 00002304           1420      lea     ENEMY_ACTIVE, a4
+00001D8C  D9C7                    1421      add.l   d7, a4
+00001D8E  18BC 0000               1422      move.b  #0, (a4)
+00001D92                          1423      * reduce player health
+00001D92  4BF9 0000233E           1424      lea     powerMeterPercent, a5
+00001D98  2A15                    1425      move.l  (a5),d5
+00001D9A  0485 0000000A           1426      sub.l   #ENEMY_DMG, d5
+00001DA0  23C5 0000233E           1427      move.l  d5, powerMeterPercent
+00001DA6  6000 003A               1428      bra     .return
+00001DAA                          1429      
+00001DAA                          1430  .enemyNotAttack
+00001DAA  B83C 0001               1431      cmp.b   #1, d4          ; if x collide, enemy don't move on x axis
+00001DAE  6700 0014               1432      beq     .checkUpDown    ; check if y collide
+00001DB2                          1433      
+00001DB2  B280                    1434      cmp.l   d0, d1          ; if playerX is bigger than enemy x
+00001DB4  6E00 0006               1435      bgt     .moveRight
+00001DB8  6000 0008               1436      bra     .moveLeft
+00001DBC                          1437  
+00001DBC                          1438  .moveRight
+00001DBC  DD52                    1439      add.w   d6, (a2)
+00001DBE  6000 0004               1440      bra     .checkUpDown
+00001DC2                          1441  .moveLeft
+00001DC2  9D52                    1442      sub.w   d6, (a2)
+00001DC4                          1443  .checkUpDown
+00001DC4  B83C 0002               1444      cmp.b   #2, d4          ; if y collide, dont move on y, return
+00001DC8  6700 0018               1445      beq      .return
+00001DCC  B682                    1446      cmp.l   d2, d3          ; if playerY is bigger than enemy Y, move down
+00001DCE  6E00 0006               1447      bgt     .moveDown       
+00001DD2  6000 000A               1448      bra     .moveUp
+00001DD6                          1449  .moveDown
+00001DD6  DD6A 0002               1450      add.w   d6, 2(a2)
+00001DDA  6000 0006               1451      bra     .return
+00001DDE                          1452  .moveUp
+00001DDE  9D6A 0002               1453      sub.w   d6, 2(a2)
+00001DE2                          1454      
+00001DE2                          1455  .return
+00001DE2  4CDF 7FFF               1456      movem.l (sp)+,ALL_REG
+00001DE6  4E75                    1457      rts
+00001DE8                          1458  
+00001DE8                          1459  updateStaff:
+00001DE8  48E7 FFFE               1460      movem.l ALL_REG,-(sp)
+00001DEC  0C79 0000 00002342      1461      cmp.w   #0, projectileActive
+00001DF4  6700 0116               1462      beq     .return
+00001DF8                          1463      
+00001DF8                          1464      *PROJECTILE_SPEED        EQU     10
+00001DF8                          1465      *PROJECTILE_ACC          EQU     3
+00001DF8                          1466      * check speed is positive or neg
+00001DF8  5D79 0000234A           1467      sub.w   #projectile_acc, projectile_speed
+00001DFE  0C79 0000 0000234A      1468      cmp.w   #0, projectile_speed
+00001E06  6F00 0078               1469      ble     .tracingtoPlayer
+00001E0A                          1470      
+00001E0A  0C79 0000 00002330      1471      cmp.w   #0, attack_dir
+00001E12  6700 000E               1472      beq     .travelLeft
+00001E16                          1473      
+00001E16  0C79 0001 00002330      1474      cmp.w   #1, attack_dir
+00001E1E  6700 0030               1475      beq     .travelRight
+00001E22                          1476      
+00001E22                          1477      *cmp.w   #2, player_dir
+00001E22                          1478      *beq     .travelUp
+00001E22                          1479      
+00001E22                          1480      *cmp.w   #3, player_dir
+00001E22                          1481      *beq     .travelDown
+00001E22                          1482      
+00001E22                          1483  .travelLeft
+00001E22                          1484      * start traveling with x speed
+00001E22  3039 0000234A           1485      move.w  projectile_speed, d0
+00001E28                          1486      * if projectile will throw off left bound, handle edge case
+00001E28  B2B9 00002346           1487      cmp.l   projectile_x, d1
+00001E2E  6E00 000C               1488      bgt     .boundaryCase
+00001E32  9179 00002346           1489      sub.w   d0, projectile_x
+00001E38  6000 00D2               1490      bra     .return
+00001E3C                          1491  .boundaryCase
+00001E3C  33FC 0000 00002346      1492      move.w  #0, projectile_x
+00001E44  33FC 0000 0000234A      1493      move.w  #0, projectile_speed
+00001E4C  6000 00BE               1494      bra     .return
+00001E50                          1495  .travelRight
+00001E50                          1496      * start traveling with x speed
+00001E50  3039 0000234A           1497      move.w  projectile_speed, d0
+00001E56  D179 00002346           1498      add.w   d0, projectile_x
+00001E5C  6000 00AE               1499      bra     .return
+00001E60                          1500  * not used
+00001E60                          1501  .travelUp
+00001E60                          1502      * start traveling with x speed
+00001E60  3039 0000234A           1503      move.w  projectile_speed, d0
+00001E66                          1504      * if projectile will throw off left bound, handle edge case
+00001E66                          1505      *cmp.l   projectile_x, d1
+00001E66                          1506      *bgt     .boundaryCase
+00001E66  9179 00002348           1507      sub.w   d0, projectile_y
+00001E6C  6000 009E               1508      bra     .return
+00001E70                          1509  * not used
+00001E70                          1510  .travelDown
+00001E70                          1511      * start traveling with x speed
+00001E70  3039 0000234A           1512      move.w  projectile_speed, d0
+00001E76                          1513      * if projectile will throw off left bound, handle edge case
+00001E76                          1514      *cmp.l   projectile_x, d1
+00001E76                          1515      *bgt     .boundaryCase
+00001E76  D179 00002348           1516      add.w   d0, projectile_y
+00001E7C  6000 008E               1517      bra     .return
+00001E80                          1518  .tracingtoPlayer
+00001E80                          1519      * start flying back to player
+00001E80                          1520      * set param for checkCollision api
+00001E80  3039 00002346           1521      move.w  projectile_x, d0
+00001E86  3239 00002300           1522      move.w  player_x, d1
+00001E8C  3439 00002348           1523      move.w  projectile_y, d2
+00001E92  3639 00002302           1524      move.w  player_y, d3
+00001E98  3C39 0000234A           1525      move.w  projectile_speed, d6
+00001E9E                          1526      * convert projectile_speed to pos
+00001E9E  4646                    1527      not.w   d6              ; Invert the bits (D0 = ~D0)
+00001EA0  5246                    1528      add.w   #1, d6
+00001EA2                          1529      * if api return 3, collided
+00001EA2  4EB9 0000200A           1530      jsr     checkCollisionWithPlayer
+00001EA8  B83C 0003               1531      cmp.b   #3, d4
+00001EAC  6700 0006               1532      beq     .backToPlayer
+00001EB0  6000 0016               1533      bra     .stillInMotion
+00001EB4                          1534  .backToPlayer
+00001EB4  33FC 0000 00002344      1535      move.w  #0, projectileThrown
+00001EBC  33FC 0000 00002342      1536      move.w  #0, projectileActive
+00001EC4  6000 0046               1537      bra     .return
+00001EC8                          1538  * determine flight path based on collision api return val
+00001EC8                          1539  .stillInMotion
+00001EC8  B83C 0001               1540      cmp.b   #1, d4      // if x collide
+00001ECC  6700 001C               1541      beq     .checkUpDown
+00001ED0                          1542      
+00001ED0  B280                    1543      cmp.l   d0, d1  // if playerX is bigger than enemy x
+00001ED2  6E00 0006               1544      bgt     .moveRight
+00001ED6  6000 000C               1545      bra     .moveLeft
+00001EDA                          1546  
+00001EDA                          1547  .moveRight
+00001EDA  DD79 00002346           1548      add.w   d6, projectile_x
+00001EE0  6000 0008               1549      bra     .checkUpDown
+00001EE4                          1550  .moveLeft
+00001EE4  9D79 00002346           1551      sub.w   d6, projectile_x
+00001EEA                          1552  .checkUpDown
+00001EEA  B83C 0002               1553      cmp.b   #2, d4      // if y collide
+00001EEE  6700 001C               1554      beq      .return
+00001EF2  B682                    1555      cmp.l   d2, d3  // if playerY is bigger than enemy Y
+00001EF4  6E00 0006               1556      bgt     .moveDown
+00001EF8  6000 000C               1557      bra     .moveUp
+00001EFC                          1558  .moveDown
+00001EFC  DD79 00002348           1559      add.w   d6, projectile_y
+00001F02  6000 0008               1560      bra     .return
+00001F06                          1561  .moveUp
+00001F06  9D79 00002348           1562      sub.w   d6, projectile_y
+00001F0C                          1563  
+00001F0C                          1564  .return
+00001F0C  4CDF 7FFF               1565      movem.l (sp)+,ALL_REG
+00001F10  4E75                    1566      rts
+00001F12                          1567      
+00001F12                          1568  * Update ui to show how many enemy player have hit
+00001F12                          1569  updateUI:
+00001F12  48E7 FFFE               1570      movem.l ALL_REG, -(sp)
+00001F16  3039 0000234C           1571      move.w  enemy_hit, d0
+00001F1C  323C 000A               1572      move.w  #10, d1
+00001F20  80C1                    1573      divu    d1, d0
+00001F22                          1574      
+00001F22                          1575      * Tenth store at d1, d0 is digits
+00001F22  3200                    1576      move.w  d0, d1
+00001F24  E088                    1577      lsr.l   #8, d0
+00001F26  E088                    1578      lsr.l   #8, d0
+00001F28                          1579      
+00001F28                          1580      * get d1 seg value and store it at d3
+00001F28  4EB9 00001F44           1581      jsr     AssignSEGValue
+00001F2E  4EB8 17C0               1582      jsr     drawUITenth
+00001F32                          1583      *move.l  d1, d3
+00001F32                          1584      
+00001F32                          1585      * get d0 seg value and restore d1 value at d1
+00001F32  2200                    1586      move.l  d0, d1
+00001F34  4EB9 00001F44           1587      jsr     AssignSEGValue
+00001F3A                          1588      * drawUI
+00001F3A  4EB8 165E               1589      jsr     drawUI
+00001F3E  4CDF 7FFF               1590      movem.l (sp)+, ALL_REG
+00001F42  4E75                    1591      rts
+00001F44                          1592  
+00001F44                          1593  * d0 take a number and assign correct seg value
+00001F44                          1594  * d1 - in
+00001F44                          1595  * d1 out
+00001F44                          1596  AssignSEGValue:
+00001F44  B2BC 00000000           1597      cmp.l   #0, d1
+00001F4A  6700 005C               1598      beq     .zero
+00001F4E                          1599      
+00001F4E  B2BC 00000001           1600      cmp.l   #1, d1
+00001F54  6700 005C               1601      beq     .one
+00001F58                          1602      
+00001F58  B2BC 00000002           1603      cmp.l   #2, d1
+00001F5E  6700 005C               1604      beq     .two
+00001F62                          1605      
+00001F62  B2BC 00000003           1606      cmp.l   #3, d1
+00001F68  6700 005C               1607      beq     .three
+00001F6C                          1608      
+00001F6C  B2BC 00000004           1609      cmp.l   #4, d1
+00001F72  6700 005C               1610      beq     .four
+00001F76                          1611      
+00001F76  B2BC 00000005           1612      cmp.l   #5, d1
+00001F7C  6700 005C               1613      beq     .five
+00001F80                          1614      
+00001F80  B2BC 00000006           1615      cmp.l   #6, d1
+00001F86  6700 005C               1616      beq     .six
+00001F8A                          1617      
+00001F8A  B2BC 00000007           1618      cmp.l   #7, d1
+00001F90  6700 005C               1619      beq     .seven
+00001F94                          1620      
+00001F94  B2BC 00000008           1621      cmp.l   #8, d1
+00001F9A  6700 005C               1622      beq     .eight
+00001F9E                          1623      
+00001F9E  B2BC 00000009           1624      cmp.l   #9, d1
+00001FA4  6700 005C               1625      beq     .nine
+00001FA8                          1626  .zero
+00001FA8  223C 01111110           1627      move.l  #ZERO, d1
+00001FAE  6000 0058               1628      bra     .return
+00001FB2                          1629  .one
+00001FB2  223C 00110000           1630      move.l  #ONE, d1 
+00001FB8  6000 004E               1631      bra     .return
+00001FBC                          1632  .two
+00001FBC  223C 01101101           1633      move.l  #TWO, d1 
+00001FC2  6000 0044               1634      bra     .return
+00001FC6                          1635  .THREE
+00001FC6  223C 01111001           1636      move.l  #THREE, d1 
+00001FCC  6000 003A               1637      bra     .return
+00001FD0                          1638  .FOUR
+00001FD0  223C 00110011           1639      move.l  #FOUR, d1 
+00001FD6  6000 0030               1640      bra     .return
+00001FDA                          1641  .FIVE
+00001FDA  223C 01011011           1642      move.l  #FIVE, d1 
+00001FE0  6000 0026               1643      bra     .return
+00001FE4                          1644  .SIX
+00001FE4  223C 01011111           1645      move.l  #SIX, d1 
+00001FEA  6000 001C               1646      bra     .return
+00001FEE                          1647  .SEVEN
+00001FEE  223C 01110000           1648      move.l  #SEVEN, d1 
+00001FF4  6000 0012               1649      bra     .return
+00001FF8                          1650  .eight
+00001FF8  223C 01111111           1651      move.l  #eight, d1 
+00001FFE  6000 0008               1652      bra     .return
+00002002                          1653  .nine
+00002002  223C 01111011           1654      move.l  #nine, d1 
+00002008                          1655  .return
+00002008  4E75                    1656      rts
+0000200A                          1657      
+0000200A                          1658      
+0000200A                          1659  *collision with player
+0000200A                          1660  * d0.w compared x
+0000200A                          1661  * d1.w player x
+0000200A                          1662  * d2.w compared y
+0000200A                          1663  * d3.w player y
+0000200A                          1664  * d6 is enemy speed
+0000200A                          1665  * return d4.b - 0 for no collision, 1 for collidedX , 2 for collideY, 3 for both collided
+0000200A                          1666  checkCollisionWithPlayer:
+0000200A  48E7 7000               1667      movem.l d1-d3, -(sp)
+0000200E  9240                    1668      sub.w   d0, d1
+00002010  B27C 0000               1669      cmp.w   #0, d1
+00002014  6D00 0006               1670      blt     .XtoPos
+00002018  6000 0006               1671      bra     .contX
+0000201C                          1672  .XtoPos
+0000201C  4641                    1673      not.w   d1              ; Invert the bits (D0 = ~D0)
+0000201E  5241                    1674      add.w   #1, d1
+00002020                          1675  .contX
+00002020  B286                    1676      cmp.l   d6, d1
+00002022  6E00 000A               1677      bgt     .checkY  // x not collided, if d1 bigger than enemy move dist
+00002026  183C 0001               1678      move.b  #1, d4  // return not collided 
+0000202A  6000 0002               1679      bra     .checkY
+0000202E                          1680  .checkY
+0000202E  9642                    1681      sub.w   d2, d3
+00002030  B67C 0000               1682      cmp.w   #0, d3
+00002034  6D00 0006               1683      blt     .YtoPos
+00002038  6000 0006               1684      bra     .contY
+0000203C                          1685  .YtoPos
+0000203C  4643                    1686      not.w   d3              ; Invert the bits (D0 = ~D0)
+0000203E  5243                    1687      add.w   #1, d3
+00002040                          1688  .contY
+00002040  B686                    1689      cmp.l   d6, d3
+00002042  6D00 0006               1690      blt     .colY
+00002046                          1691      * if y not collided, return either 0 or 1 in d4
+00002046  6000 001A               1692      bra     .return
+0000204A                          1693  .colY
+0000204A  B83C 0001               1694      cmp.b   #1, d4
+0000204E  6700 000A               1695      beq     .bothCol
+00002052  183C 0002               1696      move.b  #2, d4  // only Y collide, return 2
+00002056  6000 000A               1697      bra     .return
+0000205A                          1698  .bothCol
+0000205A  183C 0003               1699      move.b  #3, d4  // both collide return 3
+0000205E  6000 0002               1700      bra     .return
+00002062                          1701  .return
+00002062  4CDF 000E               1702      movem.l (sp)+,d1-d3
+00002066  4E75                    1703      rts
+00002068                          1704      
+00002068                          1705  *collision projectile with projectile
+00002068                          1706  * d0.w compared x
+00002068                          1707  * d1.w projectile x
+00002068                          1708  * d2.w compared y
+00002068                          1709  * d3.w projectile y
+00002068                          1710  * return d4.b - 0 for no collision, 1 for collision    
+00002068                          1711  checkProjectileCol:
+00002068  48E7 F000               1712      movem.l d0-d3, -(sp)
+0000206C                          1713      * make a copy of d3
+0000206C  3A03                    1714      move.w  d3, d5
+0000206E                          1715      * d5 is now projectile top
+0000206E  0445 0037               1716      sub.w   #PROJECTILE_HEIGHT, d5
+00002072  0445 0014               1717      sub.w   #20, d5     ; (fine tuning) make the slime easier to hit
+00002076                          1718      * check if projectile is active
+00002076  0C79 0000 00002342      1719      cmp.w   #0, projectileActive
+0000207E  6700 0036               1720      beq     .noCol
+00002082                          1721      * check if x.left smaller than projectile
+00002082  B041                    1722      cmp.w   d1, d0
+00002084  6E00 0030               1723      bgt     .noCol
+00002088                          1724      * check if x.right larger than projectile
+00002088  0640 0026               1725      add.w   #ENEMY_WIDTH, d0
+0000208C  B041                    1726      cmp.w   d1, d0
+0000208E  6D00 0026               1727      blt     .noCol
+00002092                          1728      * check if y.bottom is in projectile range
+00002092  B443                    1729      cmp.w   d3, d2
+00002094                          1730      *enemy bottom is higher than projectile bottom, check lower then projectile top
+00002094  6D00 0006               1731      blt     .belowTop      
+00002098                          1732      *enemy bottom is lower than projectile bottom, check enemy top
+00002098  6000 000C               1733      bra     .YTop          
+0000209C                          1734  .belowTop
+0000209C  B445                    1735      cmp.w   d5, d2
+0000209E                          1736      * enemy bottom lower than enemy top
+0000209E  6E00 0010               1737      bgt     .col
+000020A2  6000 0012               1738      bra     .noCol
+000020A6                          1739  .Ytop
+000020A6                          1740      * d2 is now enemy top
+000020A6  0442 0014               1741      sub.w   #ENEMY_HEIGHT, d2
+000020AA                          1742      * if enemy top smaller than projectile bottom, no collision
+000020AA  B443                    1743      cmp.w   d3, d2
+000020AC  6E00 0008               1744      bgt     .noCol
+000020B0                          1745      * if enemy top is higher than projectile bottom, must collide
+000020B0                          1746  .col
+000020B0  7801                    1747      move.l  #1, d4
+000020B2  6000 0004               1748      bra     .return
+000020B6                          1749  .noCol
+000020B6  7800                    1750      move.l  #0, d4    
+000020B8                          1751  .return
+000020B8  4CDF 000F               1752      movem.l (sp)+,d0-d3
+000020BC  4E75                    1753      rts
+000020BE                          1754      
+000020BE                          1755      
+000020BE                          1756  * d0.l is seed    
+000020BE                          1757  random: 
+000020BE  48E7 6000               1758      movem.l d1-d2, -(sp)
+000020C2  7404                    1759      MOVEQ   #4,d2       * do this 5 times
+000020C4  2039 0000233A           1760      MOVE.l  Prng32,d0   * get current 
+000020CA                          1761  Ninc0
+000020CA  7200                    1762      MOVEQ   #0,d1       * clear bit count
+000020CC  E498                    1763      ROR.l   #2,d0       * bit 31 -> carry
+000020CE  6400 0004               1764      BCC Ninc1       * skip increment if =0
+000020D2                          1765  
+000020D2  5201                    1766      ADDQ.b  #1,d1       * else increment bit count
+000020D4                          1767  Ninc1
+000020D4  E698                    1768      ROR.l   #3,d0       * bit 28 -> carry
+000020D6  6400 0004               1769      BCC Ninc2       * skip increment if =0
+000020DA                          1770  
+000020DA  5201                    1771      ADDQ.b  #1,d1       * else increment bit count
+000020DC                          1772  Ninc2
+000020DC  EB98                    1773      ROL.l   #5,d0       * restore PRNG longword
+000020DE  E211                    1774      ROXR.b  #1,d1       * EOR bit into Xb
+000020E0  E290                    1775      ROXR.l  #1,d0       * shift bit to most significant
+000020E2  51CA FFE6               1776      DBF d2,Ninc0    * loop 5 times
+000020E6                          1777  
+000020E6  23C0 0000233A           1778      MOVE.l  d0,Prng32   * save back to seed word
+000020EC  4CDF 0006               1779      movem.l (sp)+,d1-d2
+000020F0  4E75                    1780      RTS
+000020F2                          1781  
+000020F2                          1782  * A unit test for collision with player
+000020F2                          1783  TestCheckCollision:
+000020F2  48E7 FFFE               1784      movem.l All_REG, -(sp)
+000020F6  303C 00C8               1785      move.w  #200, d0
+000020FA  323C 00C8               1786      move.w  #200, d1
+000020FE  343C 0032               1787      move.w  #50, d2
+00002102  363C 00C8               1788      move.w  #200, d3
+00002106  4EB8 200A               1789      jsr     checkCollisionWithPlayer
+0000210A  B8BC 00000001           1790      cmp.l   #1, d4
+00002110  6600 007A               1791      bne     .error
+00002114  4CDF 7FFF               1792      movem.l (sp)+, ALL_REG
+00002118                          1793      
+00002118  48E7 FFFE               1794      movem.l All_REG, -(sp)
+0000211C  303C 00C9               1795      move.w  #201, d0
+00002120  323C 00C8               1796      move.w  #200, d1
+00002124  343C 0032               1797      move.w  #50, d2
+00002128  363C 00C8               1798      move.w  #200, d3 
+0000212C  4EB8 200A               1799      jsr     checkCollisionWithPlayer
+00002130  B8BC 00000001           1800      cmp.l   #1, d4
+00002136  6600 0054               1801      bne     .error
+0000213A  4CDF 7FFF               1802      movem.l (sp)+, ALL_REG
+0000213E                          1803      
+0000213E  48E7 FFFE               1804      movem.l All_REG, -(sp)
+00002142  303C 0032               1805      move.w  #50, d0
+00002146  323C 00C8               1806      move.w  #200, d1
+0000214A  343C 00C9               1807      move.w  #201, d2
+0000214E  363C 00C8               1808      move.w  #200, d3
+00002152  4EB8 200A               1809      jsr     checkCollisionWithPlayer
+00002156  B8BC 00000002           1810      cmp.l   #2, d4
+0000215C  6600 002E               1811      bne     .error
+00002160  4CDF 7FFF               1812      movem.l (sp)+, ALL_REG
+00002164                          1813      
+00002164  48E7 FFFE               1814      movem.l All_REG, -(sp)
+00002168  303C 00C8               1815      move.w  #200, d0
+0000216C  323C 00C8               1816      move.w  #200, d1
+00002170  343C 00C8               1817      move.w  #200, d2
+00002174  363C 00C8               1818      move.w  #200, d3
+00002178  4EB8 200A               1819      jsr     checkCollisionWithPlayer
+0000217C  B8BC 00000003           1820      cmp.l   #3, d4
+00002182  6600 0008               1821      bne     .error
+00002186  4CDF 7FFF               1822      movem.l (sp)+, ALL_REG
+0000218A                          1823      
+0000218A  4E75                    1824      rts
+0000218C                          1825  .error
+0000218C  21C0 0001               1826      move.l  d0, 1
+00002190  4E75                    1827      rts
+00002192                          1828  
+00002192                          1829  Lose
+00002192                          1830      * delay frame, let last sound finish playing
+00002192  7017                    1831      move.l  #DELAY_FRAME, d0
+00002194  7232                    1832      move.l  #FRAME_DELAY_TIME, d1
+00002196  4E4F                    1833      trap    #15
+00002198                          1834      * play lose sound effect
+00002198  7048                    1835      move.l  #PLAY_SOUND_COMMAND, d0
+0000219A  7204                    1836      move.l  #4, d1
+0000219C  4E4F                    1837      trap    #15
+0000219E                          1838      * draw lose screen and disable double buffer
+0000219E  705C                    1839      move.l  #DRAWING_MODE_TRAP_CODE,d0
+000021A0  7210                    1840      move.l  #DOUBLE_BUFFERED_OFF,d1
+000021A2  4E4F                    1841      trap    #15
+000021A4  4EB8 1498               1842      jsr     clearScreen
+000021A8  4EB9 0000220A           1843      jsr     drawLose
+000021AE                          1844      
+000021AE  6000 0092               1845      bra     done
+000021B2                          1846  Win 
+000021B2                          1847      * delay frame, let last sound finish playing
+000021B2  7017                    1848      move.l  #DELAY_FRAME, d0
+000021B4  7232                    1849      move.l  #FRAME_DELAY_TIME, d1
+000021B6  4E4F                    1850      trap    #15
+000021B8                          1851      * play win sound effect
+000021B8  7048                    1852      move.l  #PLAY_SOUND_COMMAND, d0
+000021BA  7203                    1853      move.l  #3, d1
+000021BC  4E4F                    1854      trap    #15
+000021BE                          1855      * draw win screen and disable double buffer
+000021BE  705C                    1856      move.l  #DRAWING_MODE_TRAP_CODE,d0
+000021C0  7210                    1857      move.l  #DOUBLE_BUFFERED_OFF,d1
+000021C2  4E4F                    1858      trap    #15
+000021C4  4EB8 1498               1859      jsr     clearScreen
+000021C8  4EB9 000021D2           1860      jsr     drawWin
+000021CE                          1861      
+000021CE  6000 0072               1862      bra     done
+000021D2                          1863  
+000021D2                          1864  * draw win screen
+000021D2                          1865  drawWin:
+000021D2  4281                    1866      clr.l    d1
+000021D4  4282                    1867      clr.l    d2     // clear d1d2, since later will move word into d1d2
+000021D6  48E7 6000               1868      movem.l  d1-d2, -(sp)
+000021DA  43F9 00054AEA           1869      lea      FILEBUFFER3, a1
+000021E0  323C 0050               1870      move.w   #80,d1
+000021E4  343C 015E               1871      move.w   #350,d2
+000021E8  7600                    1872      move.l   #0, d3
+000021EA  283C 0000010E           1873      move.l   #270, d4
+000021F0  2A3C 000001E0           1874      move.l   #480, d5
+000021F6  2C3C 0000010E           1875      move.l   #270, d6
+000021FC                          1876  
+000021FC  6100 EF42               1877      bsr      bmp_draw
+00002200  B07C 0000               1878      cmp      #0, d0
+00002204                          1879      *bne      .error
+00002204  4CDF 0006               1880      movem.l  (sp)+,d1-d2
+00002208  4E75                    1881      rts
+0000220A                          1882      
+0000220A                          1883  * draw lose screen 
+0000220A                          1884  drawLose:
+0000220A  4281                    1885      clr.l    d1
+0000220C  4282                    1886      clr.l    d2     // clear d1d2, since later will move word into d1d2
+0000220E  48E7 6000               1887      movem.l  d1-d2, -(sp)
+00002212  43F9 000D342A           1888      lea      FILEBUFFER4, a1
+00002218                          1889  
+00002218  323C 0050               1890      move.w   #80,d1
+0000221C  343C 015E               1891      move.w   #350,d2
+00002220  7600                    1892      move.l   #0, d3
+00002222  283C 0000010E           1893      move.l   #270, d4
+00002228  2A3C 000001E0           1894      move.l   #480, d5
+0000222E  2C3C 0000010E           1895      move.l   #270, d6
+00002234                          1896  
+00002234  6100 EF0A               1897      bsr      bmp_draw
+00002238  B07C 0000               1898      cmp      #0, d0
+0000223C                          1899      *bne      .error
+0000223C  4CDF 0006               1900      movem.l  (sp)+,d1-d2
+00002240  4E75                    1901      rts
+00002242                          1902  
+00002242                          1903      
+00002242                          1904  Done
+00002242  FFFF FFFF               1905      SIMHALT             ; halt simulator
+00002246                          1906  
+00002246                          1907  * Put variables and constants here
+00002246= 76 69 6B 69 6E 67 ...   1908  INPUT_FILE    dc.b  'vikingLeft.bmp',0
+00002255= 65 6E 65 6D 79 2E ...   1909  INPUT_FILE1   dc.b  'enemy.bmp',0
+0000225F= 77 65 61 70 6F 6E ...   1910  INPUT_FILE2   dc.b  'weapon.bmp',0
+0000226A= 57 69 6E 2E 62 6D ...   1911  INPUT_FILE3   dc.b  'Win.bmp',0
+00002272= 4C 6F 73 65 2E 62 ...   1912  INPUT_FILE4   dc.b  'Lose.bmp',0
+0000227B= 76 69 6B 69 6E 67 ...   1913  INPUT_FILE5   dc.b  'vikingRight.bmp',0
+0000228B= 61 74 74 61 63 6B ...   1914  INPUT_FILE6   dc.b  'attackRight.bmp',0
+0000229B= 61 74 74 61 63 6B ...   1915  INPUT_FILE7   dc.b  'attackLeft.bmp',0
+000022AA= 68 69 74 2E 77 61 ...   1916  SOUND_FILE    dc.b   'hit.wav',0
+000022B2= 67 65 74 68 69 74 ...   1917  SOUND_FILE1   dc.b   'gethit.wav',0
+000022BD= 77 69 6E 2E 77 61 ...   1918  SOUND_FILE2   dc.b   'win.wav',0
+000022C5= 6C 6F 73 65 2E 77 ...   1919  SOUND_FILE3   dc.b   'lose.wav',0
+000022CE= 41 6E 20 65 72 72 ...   1920  ErrorLabel    dc.b    'An error was encountered',0
+000022E7= 6C 65 66 74 20 72 ...   1921  DebugLabel    dc.b    'left right shift pressed',0
+00002300= 0001                    1922  PLAYER_X      dc.w    1
+00002302= 0001                    1923  PLAYER_Y      dc.w    1
+00002304  =00000008               1924  ENEMY_NUM     EQU     8     // need to be power of 4
+00002304                          1925  ENEMY_ACTIVE ds.b    ENEMY_NUM
+0000230C                          1926  ENEMY_POS     ds.l    ENEMY_NUM
+0000232C= 0001                    1927  ENEMY_X       dc.w    1
+0000232E= 0001                    1928  ENEMY_Y       dc.w    1
+00002330= 0001                    1929  attack_dir    dc.w    1
+00002332                          1930  ENEMY_MOVE_DIST    ds.b    ENEMY_NUM
+0000233A                          1931  Prng32        ds.l  1       * random number store
+0000233E                          1932  powerMeterPercent       ds.l    1
+00002342                          1933  projectileActive        ds.w    1
+00002344                          1934  projectileThrown        ds.w    1
+00002346                          1935  projectile_x            ds.w    1
+00002348                          1936  projectile_y            ds.w    1
+0000234A                          1937  PROJECTILE_SPEED        ds.w    1
+0000234C                          1938  enemy_hit               ds.w    1
+0000234E                          1939  staff_frame             ds.w    1
+00002350                          1940  playerL_frame           ds.w    1
+00002352                          1941  playerR_frame           ds.w    1
+00002354                          1942  attack_frame           ds.w    1
+00002356                          1943  player_facing           ds.w    1
+00002358                          1944  is_attacking            ds.w    1
+0000235A                          1945  staff_spriteFrames     
+0000235A= 000A 0036 001E 0036     1946              dc.w  10, 54, 30, 54
+00002362= 0028 0036 0025 0036     1947              dc.w  40, 54, 37, 54
+0000236A= 004D 0036 0028 0036     1948              dc.w  77, 54, 40, 54
+00002372= 0078 0036 002A 0036     1949              dc.w  120, 54, 42, 54
+0000237A= 00A2 0036 0028 0036     1950              dc.w  162, 54, 40, 54
+00002382= 00CA 0036 002C 0036     1951              dc.w  202, 54, 44, 54
+0000238A= 00F6 0036 002C 0036     1952              dc.w  246, 54, 44, 54
+00002392= 0122 0036 0028 0036     1953              dc.w  290, 54, 40, 54
+0000239A                          1954  playerR_spriteFrames
+0000239A= 0000 0046 0048 0041     1955              dc.w  0, 70, 72, 65   
+000023A2= 0048 0046 0048 0041     1956              dc.w  72, 70, 72, 65  
+000023AA= 0090 0046 0048 0041     1957              dc.w  144, 70, 72, 65 
+000023B2= 00D6 0046 0048 0041     1958              dc.w  214, 70, 72, 65
+000023BA= 011E 0046 0048 0041     1959              dc.w  286, 70, 72, 65
+000023C2= 0166 0046 0048 0041     1960              dc.w  358, 70, 72, 65
+000023CA= 01AE 0046 0048 0041     1961              dc.w  430, 70, 72, 65
+000023D2= 01F6 0046 0048 0041     1962              dc.w  502, 70, 72, 65   
+000023DA                          1963  playerL_spriteFrames
+000023DA= 01F6 0046 0048 0041     1964              dc.w  502, 70, 72, 65    
+000023E2= 01AE 0046 0048 0041     1965              dc.w  430, 70, 72, 65   
+000023EA= 0166 0046 0048 0041     1966              dc.w  358, 70, 72, 65
+000023F2= 011E 0046 0048 0041     1967              dc.w  286, 70, 72, 65
+000023FA= 00D6 0046 0048 0041     1968              dc.w  214, 70, 72, 65
+00002402= 008E 0046 0048 0041     1969              dc.w  142, 70, 72, 65 
+0000240A= 0048 0046 0048 0041     1970              dc.w  72, 70, 72, 65
+00002412= 0000 0046 0048 0041     1971              dc.w  0, 70, 72, 65
+0000241A                          1972  attackR_spriteFrames
+0000241A= 0000 0046 004A 0041     1973              dc.w  0, 70, 74, 65   
+00002422= 004A 0046 0046 0041     1974              dc.w  74, 70, 70, 65  
+0000242A= 008E 0046 0048 0041     1975              dc.w  142, 70, 72, 65 
+00002432= 00D6 0046 0050 0041     1976              dc.w  214, 70, 80, 65
+0000243A= 0126 0046 0055 0041     1977              dc.w  294, 70, 85, 65
+00002442                          1978  attackL_spriteFrames
+00002442= 0136 0046 0048 0041     1979              dc.w  310, 70, 72, 65
+0000244A= 00F0 0046 0046 0041     1980              dc.w  240, 70, 70, 65 
+00002452= 00A8 0046 0048 0041     1981              dc.w  168, 70, 72, 65
+0000245A= 0055 0046 0050 0041     1982              dc.w  85, 70, 80, 65
+00002462= 0000 0046 0055 0041     1983              dc.w  0, 70, 85, 65   
+0000246A                          1984    
+0000246A  =0002E23F               1985  FILESIZE      EQU     $2E23F
+0000246A  =00005000               1986  FILESIZE1     EQU     $5000
+0000246A  =0001F43F               1987  FILESIZE2     EQU     $1F43F
+0000246A  =0007E93F               1988  FILESIZE3     EQU     $7E93F
+0000246A                          1989                ds.l    0
+0000246A                          1990  FILEBUFFER    ds.b    FILESIZE
+000306AA                          1991                ds.l    0
+000306AA                          1992  FILEBUFFER1   ds.b    FILESIZE1
+000356AA                          1993                ds.l    0
+000356AA                          1994  FILEBUFFER2   ds.b    FILESIZE2 
+00054AEA                          1995                ds.l    0
+00054AEA                          1996  FILEBUFFER3   ds.b    FILESIZE3
+000D342A                          1997                ds.l    0
+000D342A                          1998  FILEBUFFER4   ds.l    FILESIZE3
+002CD926                          1999                ds.l    0
+002CD926                          2000  FILEBUFFER5   ds.b    FILESIZE
+002FBB66                          2001                ds.l    0
+002FBB66                          2002  FILEBUFFER6   ds.b    FILESIZE
+00329DA6                          2003                ds.l    0
+00329DA6                          2004  FILEBUFFER7   ds.b    FILESIZE
+00357FE5                          2005  
+00357FE5                          2006                
+00357FE5                          2007  
+00357FE5                          2008      END    START        ; last line of source
+
+No errors detected
+No warnings generated
+
+
+SYMBOL TABLE INFORMATION
+Symbol-name         Value
+-------------------------
+ALL_REG             7FFF
+ASSIGNSEGVALUE      1F44
+ASSIGNSEGVALUE:EIGHT  1FF8
+ASSIGNSEGVALUE:FIVE  1FDA
+ASSIGNSEGVALUE:FOUR  1FD0
+ASSIGNSEGVALUE:NINE  2002
+ASSIGNSEGVALUE:ONE  1FB2
+ASSIGNSEGVALUE:RETURN  2008
+ASSIGNSEGVALUE:SEVEN  1FEE
+ASSIGNSEGVALUE:SIX  1FE4
+ASSIGNSEGVALUE:THREE  1FC6
+ASSIGNSEGVALUE:TWO  1FBC
+ASSIGNSEGVALUE:ZERO  1FA8
+ATTACKL_SPRITEFRAMES  2442
+ATTACKR_SPRITEFRAMES  241A
+ATTACK_DIR          2330
+ATTACK_FRAME        2354
+BITMASK             1
+BITSPERPIXEL        120C
+BLACK               0
+BLUE                FF0000
+BMP_DRAW            1140
+BMP_DRAW:ERROR      1204
+BMP_DRAW:INNERLOOP  11B0
+BMP_DRAW:NEXTROW    11E6
+BMP_DRAW:OUTERLOOP  11A2
+BMP_DRAW:RETURN     11FC
+BMP_DRAW:UPDATECOUNTER  11E0
+BMP_LOAD            106A
+BMP_LOAD:AFTERCHECK  111A
+BMP_LOAD:CHECK32    10D6
+BMP_LOAD:ERROR      1132
+BMP_LOAD:FILECONVERT  1104
+BMP_UNLOAD          1000
+BMP_UNLOAD:AFTERCONVERT  1030
+BMP_UNLOAD:ERROR    1064
+BMP_UNLOAD:FILECONVERT  101A
+CHECKCOLLISIONWITHPLAYER  200A
+CHECKCOLLISIONWITHPLAYER:BOTHCOL  205A
+CHECKCOLLISIONWITHPLAYER:CHECKY  202E
+CHECKCOLLISIONWITHPLAYER:COLY  204A
+CHECKCOLLISIONWITHPLAYER:CONTX  2020
+CHECKCOLLISIONWITHPLAYER:CONTY  2040
+CHECKCOLLISIONWITHPLAYER:RETURN  2062
+CHECKCOLLISIONWITHPLAYER:XTOPOS  201C
+CHECKCOLLISIONWITHPLAYER:YTOPOS  203C
+CHECKPROJECTILECOL  2068
+CHECKPROJECTILECOL:BELOWTOP  209C
+CHECKPROJECTILECOL:COL  20B0
+CHECKPROJECTILECOL:NOCOL  20B6
+CHECKPROJECTILECOL:RETURN  20B8
+CHECKPROJECTILECOL:YTOP  20A6
+CLEARSCREEN         1498
+CLEAR_SCREEN_COMMAND  B
+CLEAR_SCREEN_MAGIC_VAL  FF00
+COLOR_FORMAT_OFFSET  1C
+DEBUGLABEL          22E7
+DELAYFRAME          1A28
+DELAY_FRAME         17
+DONE                2242
+DOUBLE_BUFFERED_MODE  11
+DOUBLE_BUFFERED_OFF  10
+DRAWALLENEMIES      1A38
+DRAWALLENEMIES:DRAWUPDATEINDEX  1A6C
+DRAWALLENEMIES:LOOP  1A56
+DRAWALLENEMIES:RETURN  1A7E
+DRAWALLENEMIES:UPDATELOOP  1A76
+DRAWENEMY           1A84
+DRAWENEMY:ERROR     1ABA
+DRAWHEALTHBAR       1AC6
+DRAWING_MODE_TRAP_CODE  5C
+DRAWLOSE            220A
+DRAWPLAYER          14A6
+DRAWPLAYER:ATTACKDIR  14DA
+DRAWPLAYER:ATTACKL  156C
+DRAWPLAYER:ATTACKR  14EA
+DRAWPLAYER:CONTINUE  1626
+DRAWPLAYER:ERROR    164E
+DRAWPLAYER:LOADED   1616
+DRAWPLAYER:LOADLEFT  15EE
+DRAWPLAYER:LOADRIGHT  1604
+DRAWPLAYER:NOALFRESET  15CA
+DRAWPLAYER:NOARFRESET  1548
+DRAWPLAYER:RESETALFRAME  1596
+DRAWPLAYER:RESETARFRAME  1514
+DRAWPLAYER:RESETFRAME  1622
+DRAWPLAYER:RETURN   163C
+DRAWPOSITIONX       120E
+DRAWPOSITIONY       1210
+DRAWSTAFF           1924
+DRAWSTAFF:CONTINUE  196A
+DRAWSTAFF:ERROR     199C
+DRAWSTAFF:RESETFRAME  1962
+DRAWSTAFF:RETURN    1996
+DRAWUI              165E
+DRAWUI:PRESEGB      169E
+DRAWUI:PRESEGC      16CC
+DRAWUI:PRESEGD      16FA
+DRAWUI:PRESEGE      1728
+DRAWUI:PRESEGF      1756
+DRAWUI:PRESEGG      1784
+DRAWUI:RETURN       17B2
+DRAWUI:SEGA         1688
+DRAWUI:SEGB         16B6
+DRAWUI:SEGC         16E4
+DRAWUI:SEGD         1712
+DRAWUI:SEGE         1740
+DRAWUI:SEGF         176E
+DRAWUI:SEGG         179C
+DRAWUITENTH         17C0
+DRAWUITENTH:PRESEGB  1802
+DRAWUITENTH:PRESEGC  1830
+DRAWUITENTH:PRESEGD  185E
+DRAWUITENTH:PRESEGE  188C
+DRAWUITENTH:PRESEGF  18BA
+DRAWUITENTH:PRESEGG  18E8
+DRAWUITENTH:RETURN  1916
+DRAWUITENTH:SEGA    17EC
+DRAWUITENTH:SEGB    181A
+DRAWUITENTH:SEGC    1848
+DRAWUITENTH:SEGD    1876
+DRAWUITENTH:SEGE    18A4
+DRAWUITENTH:SEGF    18D2
+DRAWUITENTH:SEGG    1900
+DRAWWIN             21D2
+DRAW_CIRCLE_COMMAND  58
+DRAW_PIXEL_CMD      52
+DRAW_RECTANGLE_COMMAND  57
+EIGHT               1111111
+ENEMYSPAWN          19AA
+ENEMYSPAWN:CONTINUELOOP  1A1A
+ENEMYSPAWN:INCREMENT  1A12
+ENEMYSPAWN:LOOP     19C2
+ENEMYSPAWN:POSTINCREMENT  1A14
+ENEMYSPAWN:RETURN   1A22
+ENEMYSPAWN:SETACTIVE  19D8
+ENEMY_ACTIVE        2304
+ENEMY_DMG           A
+ENEMY_HEIGHT        14
+ENEMY_HIT           234C
+ENEMY_MOVE_DIST     2332
+ENEMY_NUM           8
+ENEMY_POS           230C
+ENEMY_WIDTH         26
+ENEMY_X             232C
+ENEMY_Y             232E
+ERRORLABEL          22CE
+FILEBUFFER          246A
+FILEBUFFER1         306AA
+FILEBUFFER2         356AA
+FILEBUFFER3         54AEA
+FILEBUFFER4         D342A
+FILEBUFFER5         2CD926
+FILEBUFFER6         2FBB66
+FILEBUFFER7         329DA6
+FILESIZE            2E23F
+FILESIZE1           5000
+FILESIZE2           1F43F
+FILESIZE3           7E93F
+FILE_TASK_FCLOSE    38
+FILE_TASK_FCREATE   34
+FILE_TASK_FOPEN     33
+FILE_TASK_FREAD     35
+FILE_TASK_FWRITE    36
+FILE_TASK_PRINT     D
+FIVE                1011011
+FOUR                110011
+FRAME_DELAY_TIME    32
+GAMELOOP            1330
+GET_USER_INPUT_COMMAND  13
+GREEN               FF00
+HANDLEINPUT         1B30
+HANDLEINPUT:ATTACKLEFTINPUT  1C8E
+HANDLEINPUT:ATTACKRIGHTINPUT  1C8E
+HANDLEINPUT:DONEINPUT  1D08
+HANDLEINPUT:INCED   1C12
+HANDLEINPUT:INCED1  1C86
+HANDLEINPUT:INCLEFT  1C02
+HANDLEINPUT:INCLEFT1  1C78
+HANDLEINPUT:INCRIGHT  1C0C
+HANDLEINPUT:INCRIGHT1  1C80
+HANDLEINPUT:KEYDOWNINPUT  1C50
+HANDLEINPUT:KEYLEFTINPUT  1BA4
+HANDLEINPUT:KEYRIGHTINPUT  1C1A
+HANDLEINPUT:KEYUPINPUT  1BD6
+HANDLEINPUT:PLAYERDOWN  1CF8
+HANDLEINPUT:PLAYERLEFT  1CCC
+HANDLEINPUT:PLAYERRIGHT  1CD8
+HANDLEINPUT:PLAYERUP  1CE4
+HANDLEINPUT:THROWSTAFFINPUT  1C8E
+HEIGHT_OFFSET       16
+IMAGE_FORMAT_OFFSET  0
+IMAGE_OFFSET        36
+INPUT_FILE          2246
+INPUT_FILE1         2255
+INPUT_FILE2         225F
+INPUT_FILE3         226A
+INPUT_FILE4         2272
+INPUT_FILE5         227B
+INPUT_FILE6         228B
+INPUT_FILE7         229B
+IS_ATTACKING        2358
+KEY_A_INPUT         41
+KEY_DOWN_INPUT      28
+KEY_D_INPUT         44
+KEY_LEFT_INPUT      25
+KEY_RIGHT_INPUT     27
+KEY_SPACE_INPUT     20
+KEY_S_INPUT         53
+KEY_UP_INPUT        26
+KEY_W_INPUT         57
+LOADENEMY           1400
+LOADENEMY:ERROR     1420
+LOADLOSE            1472
+LOADLOSE:ERROR      1492
+LOADPLAYER          1380
+LOADPLAYER:ERROR    13FA
+LOADSTAFF           1426
+LOADSTAFF:ERROR     1446
+LOADWIN             144C
+LOADWIN:ERROR       146C
+LOAD_SOUND_COMMAND  47
+LOSE                2192
+NINC0               20CA
+NINC1               20D4
+NINC2               20DC
+NINE                1111011
+ONE                 110000
+ORANGE              3090FF
+PLAYERL_FRAME       2350
+PLAYERL_SPRITEFRAMES  23DA
+PLAYERR_FRAME       2352
+PLAYERR_SPRITEFRAMES  239A
+PLAYER_FACING       2356
+PLAYER_HEIGHT       41
+PLAYER_MOVE_DIST    19
+PLAYER_WIDTH        28
+PLAYER_X            2300
+PLAYER_Y            2302
+PLAY_SOUND_COMMAND  48
+POWERMETERPERCENT   233E
+POWER_METER_BOTTOM  1E
+POWER_METER_COLOR   FF0000
+POWER_METER_INSIDE_COLOR  FF
+POWER_METER_LEFT    28
+POWER_METER_RIGHT   FA
+POWER_METER_SPEED   100
+POWER_METER_TOP     F
+PRNG32              233A
+PROJECTILEACTIVE    2342
+PROJECTILETHROWN    2344
+PROJECTILE_ACC      6
+PROJECTILE_D_OFFSET  14
+PROJECTILE_HEIGHT   37
+PROJECTILE_INIT_SPEED  2D
+PROJECTILE_R_OFFSET  3C
+PROJECTILE_SPEED    234A
+PROJECTILE_U_OFFSET  55
+PROJECTILE_X        2346
+PROJECTILE_X_OFFSET  14
+PROJECTILE_Y        2348
+RANDOM              20BE
+RED                 FF
+REPAINT_SCREEN_TRAP_CODE  5E
+RUNTEST             1328
+SET_FILL_COLOR_COMMAND  51
+SET_PEN_COLOR_CMD   50
+SET_PEN_COLOR_COMMAND  50
+SEVEN               1110000
+SIX                 1011111
+SIZE_OFFSET         2
+SOUND_FILE          22AA
+SOUND_FILE1         22B2
+SOUND_FILE2         22BD
+SOUND_FILE3         22C5
+STAFF_FRAME         234E
+STAFF_FRAME_NUM     8
+STAFF_SPRITEFRAMES  235A
+START               1212
+START:CONTINUE      12E6
+START:ERROR         1322
+START:LOOP          12D2
+SWAPBUFFERS         1B28
+SWITCHENDIAN        1138
+TASK_PRINT          D
+TESTCHECKCOLLISION  20F2
+TESTCHECKCOLLISION:ERROR  218C
+THREE               1111001
+TWO                 1101101
+UPDATEEACHENEMY     1D0E
+UPDATEEACHENEMY:CHECKUPDOWN  1DC4
+UPDATEEACHENEMY:DIE  1D44
+UPDATEEACHENEMY:ENEMYATTACK  1D80
+UPDATEEACHENEMY:ENEMYNOTATTACK  1DAA
+UPDATEEACHENEMY:LIVE  1D60
+UPDATEEACHENEMY:MOVEDOWN  1DD6
+UPDATEEACHENEMY:MOVELEFT  1DC2
+UPDATEEACHENEMY:MOVERIGHT  1DBC
+UPDATEEACHENEMY:MOVEUP  1DDE
+UPDATEEACHENEMY:RETURN  1DE2
+UPDATESTAFF         1DE8
+UPDATESTAFF:BACKTOPLAYER  1EB4
+UPDATESTAFF:BOUNDARYCASE  1E3C
+UPDATESTAFF:CHECKUPDOWN  1EEA
+UPDATESTAFF:MOVEDOWN  1EFC
+UPDATESTAFF:MOVELEFT  1EE4
+UPDATESTAFF:MOVERIGHT  1EDA
+UPDATESTAFF:MOVEUP  1F06
+UPDATESTAFF:RETURN  1F0C
+UPDATESTAFF:STILLINMOTION  1EC8
+UPDATESTAFF:TRACINGTOPLAYER  1E80
+UPDATESTAFF:TRAVELDOWN  1E70
+UPDATESTAFF:TRAVELLEFT  1E22
+UPDATESTAFF:TRAVELRIGHT  1E50
+UPDATESTAFF:TRAVELUP  1E60
+UPDATEUI            1F12
+WHITE               FFFFFF
+WIDTH_OFFSET        12
+WIN                 21B2
+WIN_CONDITION       14
+YELLOW              FFFF
+ZERO                1111110

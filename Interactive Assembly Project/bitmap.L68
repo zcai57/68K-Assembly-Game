@@ -1,0 +1,379 @@
+00000000 Starting Address
+Assembler used: EASy68K Editor/Assembler v5.16.01
+Created On: 10/17/2024 10:55:29 PM
+
+00000000                             1  *-----------------------------------------------------------
+00000000                             2  * Title      :
+00000000                             3  * Written by :
+00000000                             4  * Date       :
+00000000                             5  * Description:
+00000000                             6  *-----------------------------------------------------------
+00000000  =0000000D                  7  File_TASK_PRINT      EQU     13
+00000000  =00000033                  8  FILE_TASK_FOPEN      EQU     51
+00000000  =00000034                  9  FILE_TASK_FCREATE    EQU     52
+00000000  =00000035                 10  FILE_TASK_FREAD      EQU     53
+00000000  =00000036                 11  FILE_TASK_FWRITE     EQU     54
+00000000  =00000038                 12  FILE_TASK_FCLOSE     EQU     56
+00000000  =00000000                 13  IMAGE_FORMAT_OFFSET  EQU     0
+00000000  =00000002                 14  SIZE_OFFSET          EQU     2
+00000000  =0000001C                 15  COLOR_FORMAT_OFFSET  EQU     28
+00000000  =00000012                 16  WIDTH_OFFSET         EQU     18
+00000000  =00000016                 17  HEIGHT_OFFSET        EQU     22
+00000000  =00000036                 18  IMAGE_OFFSET         EQU     54
+00000000  =00000050                 19  SET_PEN_COLOR_CMD    EQU     80
+00000000  =00000052                 20  DRAW_PIXEL_CMD       EQU     82
+00000000                            21  ALL_REG                 REG     d0-d7/a0-a6 
+00000000                            22  
+00000000                            23  
+00000000                            24  
+00000000                            25  *---
+00000000                            26  * Write a buffer to a file
+00000000                            27  *
+00000000                            28  * a1 - start address of filename
+00000000                            29  * a2 - start address of buffer to write
+00000000                            30  * d1.l - size of buffer to write
+00000000                            31  *
+00000000                            32  * out d0.b - 0 for success, non-zero for failure
+00000000                            33  *---
+00000000                            34  bmp_unload:
+00000000  48E7 6040                 35          movem.l    d1-d2/a1, -(sp)
+00000004  264A                      36          move.l      a2, a3
+00000006                            37          *Compute pixel numbers
+00000006  202B 0012                 38          move.l      WIDTH_OFFSET(a3),d0
+0000000A  6100 012C                 39          bsr         switchEndian
+0000000E  2400                      40          move.l      d0, d2
+00000010  202B 0016                 41          move.l      HEIGHT_OFFSET(a3),d0
+00000014  6100 0122                 42          bsr         switchEndian
+00000018  C4C0                      43          mulu        d0, d2     // d1 stores pixel numbers
+0000001A                            44  .fileConvert:
+0000001A                            45          *convert all image pixel to 68k format
+0000001A  202B 0036                 46          move.l      IMAGE_OFFSET(a3),d0
+0000001E  E198                      47          rol.l       #8, d0
+00000020  2740 0036                 48          move.l      d0, IMAGE_OFFSET(a3)
+00000024  588B                      49          add.l       #4, a3
+00000026  5382                      50          sub.l       #1, d2
+00000028  B4BC 00000000             51          cmp.l       #0, d2
+0000002E  66EA                      52          bne         .fileConvert
+00000030                            53  
+00000030                            54  .afterConvert       
+00000030                            55          * d0 used for filewrite cmd
+00000030                            56          * a1 for output filename 
+00000030                            57          * d2 is used to store size to write
+00000030  2401                      58          move.l     d1, d2
+00000032  103C 0034                 59          move.b     #FILE_TASK_FCREATE, d0
+00000036  4E4F                      60          trap #15
+00000038  B03C 0000                 61          cmp.b      #0, d0
+0000003C  6600 0026                 62          bne       .error
+00000040                            63          * After read d1 stores filename
+00000040  103C 0036                 64          move.b     #FILE_TASK_FWRITE,d0
+00000044  224A                      65          move.l     a2, a1
+00000046                            66          
+00000046  4E4F                      67          trap #15
+00000048  B03C 0000                 68          cmp.b      #0, d0
+0000004C  6600 0016                 69          bne        .error
+00000050                            70          
+00000050                            71          * Close file
+00000050  103C 0038                 72          move.b     #FILE_TASK_FCLOSE,d0
+00000054  4E4F                      73          trap #15
+00000056  B07C 0000                 74          cmp        #0, d0
+0000005A  6600 0008                 75          bne        .error
+0000005E                            76          
+0000005E  4CDF 0206                 77          movem.l    (sp)+, d1-d2/a1
+00000062  4E75                      78          rts
+00000064                            79  
+00000064                            80  .error
+00000064  103C 0001                 81      move.b      #1,d0
+00000068  4E75                      82      rts
+0000006A                            83  
+0000006A                            84  
+0000006A                            85  *---
+0000006A                            86  * Read a buffer from a file
+0000006A                            87  *
+0000006A                            88  * a1 - start address of filename
+0000006A                            89  * a2 - start address of buffer to read
+0000006A                            90  * d1.l - size of buffer to read
+0000006A                            91  *
+0000006A                            92  * out d1.l - number of bytes read
+0000006A                            93  * out d0.b - 0 for success, non-zero for failure
+0000006A                            94  *---
+0000006A                            95  bmp_load:
+0000006A                            96          * a1 is opening file name
+0000006A                            97          *move.l      (a1),d3         //copy file name in d3
+0000006A  48E7 3040                 98          movem.l    d2-d3/a1, -(sp)
+0000006E  2401                      99          move.l     d1, d2
+00000070  103C 0033                100          move.b     #FILE_TASK_FOPEN, d0
+00000074  4E4F                     101          trap #15
+00000076  B03C 0000                102          cmp.b      #0, d0
+0000007A  6600 00B6                103          bne       .error
+0000007E                           104          
+0000007E  2601                     105          move.l      d1,d3 
+00000080                           106          * file name stored in d1
+00000080                           107          * d2.l num of bytes to read for FILE_READ        
+00000080                           108          * a1 is buffer to read
+00000080                           109          * output d1.l as size read
+00000080  103C 0035                110          move.b     #FILE_TASK_FREAD,d0
+00000084  224A                     111          move.l     a2, a1
+00000086                           112          
+00000086  4E4F                     113          trap #15
+00000088  B03C 0000                114          cmp.b      #0, d0
+0000008C  6600 00A4                115          bne        .error
+00000090                           116          
+00000090                           117          *check width < 1024
+00000090  202A 0012                118          move.l      WIDTH_OFFSET(a2),d0
+00000094  7204                     119          move.l      #4, d1
+00000096  6100 00A0                120          bsr         switchEndian
+0000009A  B0BC 00000400            121          cmp.l      #1024, d0
+000000A0  6200 0090                122          bhi        .error
+000000A4                           123          *check height < 1024
+000000A4  202A 0016                124          move.l      HEIGHT_OFFSET(a2),d0
+000000A8  6100 008E                125          bsr         switchEndian
+000000AC  B0BC 00000400            126          cmp.l      #1024, d0
+000000B2  6200 007E                127          bhi         .error
+000000B6                           128          *check bmp format is 24 or 32
+000000B6  4280                     129          clr.l       d0
+000000B8  202A 001C                130          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000000BC  7202                     131          move.l      #2, d1
+000000BE  6100 0078                132          bsr         switchEndian
+000000C2  B07C 0018                133          cmp.w       #24, d0          // check 24
+000000C6  6600 000E                134          bne         .check32         // if not 24, check 32
+000000CA  33FC 0003 0000020C       135          move.w      #3, bitsPerPixel // if 24, assign bitsPerPixel
+000000D2  6000 0046                136          bra         .afterCheck
+000000D6                           137  * check is 32 bit color format
+000000D6                           138  .check32:
+000000D6  4280                     139          clr.l       d0
+000000D8  202A 001C                140          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000000DC  6100 005A                141          bsr         switchEndian
+000000E0  B07C 0020                142          cmp.w       #32, d0
+000000E4  6600 004C                143          bne         .error   
+000000E8  33FC 0004 0000020C       144          move.w      #4, bitsPerPixel
+000000F0                           145          *Compute pixel numbers
+000000F0  202A 0012                146          move.l      WIDTH_OFFSET(a2),d0
+000000F4  6100 0042                147          bsr         switchEndian
+000000F8  2200                     148          move.l      d0, d1  //weight
+000000FA  202A 0016                149          move.l      HEIGHT_OFFSET(a2),d0
+000000FE  6100 0038                150          bsr         switchEndian    //height
+00000102  C2C0                     151          mulu        d0, d1      // d1 stores pixel numbers
+00000104                           152  .fileConvert:
+00000104                           153          *convert all image pixel to 68k format
+00000104  202A 0036                154          move.l      IMAGE_OFFSET(a2),d0
+00000108  E098                     155          ror.l       #8, d0
+0000010A  2540 0036                156          move.l      d0, IMAGE_OFFSET(a2)
+0000010E  588A                     157          add.l       #4, a2
+00000110  5381                     158          sub.l       #1, d1
+00000112  B2BC 00000000            159          cmp.l       #0, d1
+00000118  66EA                     160          bne         .fileConvert
+0000011A                           161  .afterCheck
+0000011A  3203                     162          move        d3, d1 // restore file name
+0000011C                           163          * Close file
+0000011C  103C 0038                164          move.b     #FILE_TASK_FCLOSE,d0
+00000120  4E4F                     165          trap #15
+00000122  B07C 0000                166          cmp        #0, d0
+00000126  6600 000A                167          bne        .error
+0000012A                           168          
+0000012A  2202                     169          move.l     d2, d1
+0000012C  4CDF 020C                170          movem.l    (sp)+,d2-d3/a1
+00000130  4E75                     171          rts
+00000132                           172  
+00000132                           173  .error
+00000132  103C 0001                174      move.b      #1,d0
+00000136  4E75                     175      rts
+00000138                           176      
+00000138                           177  * switch from little endian to big endian
+00000138                           178  * d0.l is the data content
+00000138                           179  *
+00000138                           180  * out d0 is switched data
+00000138                           181  switchEndian:
+00000138                           182      * d5 is temp storage for d2
+00000138  E058                     183      ror.w       #8, d0     ; Rotate the lower word to swap the lowest bytes
+0000013A  4840                     184      swap        d0         ; Swap the upper and lower 16-bit words
+0000013C  E058                     185      ror.w       #8, d0     ; Rotate the lower word to swap the previously upper bytes
+0000013E  4E75                     186      rts
+00000140                           187  
+00000140                           188  * Draw rect from picture
+00000140                           189  * Start position is lower left corner
+00000140                           190  * a1 is loaded picture address
+00000140                           191  * d1 is draw x
+00000140                           192  * d2 is draw y
+00000140                           193  * d3 is rect starting point x
+00000140                           194  * d4 is rect starting point y
+00000140                           195  * d5 is rect width
+00000140                           196  * d6 is rect height
+00000140                           197  *
+00000140                           198  * out d0 - 0 for success, 1 for failure 
+00000140                           199  bmp_draw
+00000140  48E7 FFFE                200      movem.l      ALL_REG, -(sp)
+00000144                           201      * Assign drawposition x and y and load bitsPerPixel to a3
+00000144  47F9 0000020C            202       lea         bitsPerPixel, a3   
+0000014A  33C1 0000020E            203       move.w       d1, drawPositionX
+00000150  33C2 00000210            204       move.w       d2, drawPositionY 
+00000156                           205       
+00000156                           206       * check rect y is in bound
+00000156  2449                     207       move.l      a1, a2
+00000158  2004                     208       move.l      d4, d0
+0000015A  5240                     209       addq        #1, d0
+0000015C  BC80                     210       cmp.l       d0, d6   
+0000015E  6E00 00A4                211       bgt         .error     // if rect.y is bigger than start.y index + 1, err
+00000162                           212       
+00000162                           213       * check rect x is in bound
+00000162  2003                     214       move.l      d3, d0
+00000164  D085                     215       add.l       d5, d0
+00000166  2E29 0012                216       move.l      WIDTH_OFFSET(a1),d7
+0000016A  E05F                     217       ror.w       #8, d7     ; Rotate the lower word to swap the lowest bytes
+0000016C  4847                     218       swap        d7         ; Swap the upper and lower 16-bit words
+0000016E  E05F                     219       ror.w       #8, d7 
+00000170  B087                     220       cmp.l       d7,d0
+00000172  6E00 0090                221       bgt         .error   // if d3+d5 bigger than width, err
+00000176                           222       
+00000176                           223       * Check draw position is low enough to contain picture
+00000176  BC82                     224       cmp.l       d2, d6
+00000178  6E00 008A                225       bgt         .error       // if rect.y is bigger than draw pos.y, err
+0000017C                           226       
+0000017C                           227       * Store offset between rect.y and image height
+0000017C  2029 0016                228       move.l      HEIGHT_OFFSET(a1),d0
+00000180  61B6                     229       bsr         switchEndian    
+00000182  9084                     230       sub.l       d4, d0
+00000184                           231      
+00000184  D5FC 00000036            232       add.l       #IMAGE_OFFSET, a2 // now a2 represent pixel data start
+0000018A                           233       
+0000018A                           234       * Start locating start point
+0000018A                           235       * locate row
+0000018A  2E29 0012                236       move.l      WIDTH_OFFSET(a1),d7
+0000018E  E05F                     237       ror.w       #8, d7
+00000190  4847                     238       swap        d7         
+00000192  E05F                     239       ror.w       #8, d7 
+00000194                           240       
+00000194  CED3                     241       mulu        (a3),d7           // every pixel is 3 bits, with Width num of pixels
+00000196                           242  * For 32 bit color format, compute bits per row
+00000196  2807                     243       move.l      d7, d4         // copy d7 to d4. d4 is number of bits per row       
+00000198  CEC0                     244       mulu        d0, d7
+0000019A  D5C7                     245       add.l       d7, a2
+0000019C                           246       
+0000019C                           247       * locate column
+0000019C  C6D3                     248       mulu        (a3),d3
+0000019E  D5C3                     249       add.l       d3, a2         // now a2 is starting point address
+000001A0  260A                     250       move.l      a2, d3         // d3 is now the address of starting point
+000001A2                           251       * start loop
+000001A2                           252  .outerLoop
+000001A2                           253      *check row d2 is 0
+000001A2  BCBC 00000000            254      cmp.l       #0, d6
+000001A8  6700 0052                255      beq         .return
+000001AC  48E7 0400                256      movem.l      d5, -(sp)     
+000001B0                           257  .innerLoop
+000001B0                           258      * start printing
+000001B0                           259      * check if d3 is 0
+000001B0  BABC 00000000            260      cmp.l       #0, d5
+000001B6  6700 002E                261      beq         .nextRow
+000001BA                           262  
+000001BA                           263  * For 32 bit color format
+000001BA                           264  * Store color in d0 then update a2 to next pixel
+000001BA  2012                     265      move.l      (a2),d0
+000001BC  588A                     266      add.l        #4,a2     // update a2
+000001BE                           267      
+000001BE                           268      *check if is background
+000001BE  B0BC 00000002            269      cmp.l       #$00000002, d0
+000001C4  6700 001A                270      beq         .updateCounter
+000001C8  B0BC 00FFFFFF            271      cmp.l       #$00FFFFFF, d0
+000001CE  6700 0010                272      beq         .updateCounter
+000001D2                           273      * start to print pixel
+000001D2  2E01                     274      move.l      d1, d7      // temp store d1 at d7
+000001D4  2200                     275      move.l      d0, d1      // store pen color in d1
+000001D6  7050                     276      move.l      #SET_PEN_COLOR_CMD, d0
+000001D8  4E4F                     277      trap        #15
+000001DA                           278      
+000001DA  2207                     279      move.l      d7, d1      // restore d1 draw x
+000001DC  7052                     280      move.l      #DRAW_PIXEL_CMD, d0
+000001DE  4E4F                     281      trap        #15
+000001E0                           282  
+000001E0                           283  .updateCounter
+000001E0                           284      * update d2, a2 counter and print next in row
+000001E0  5385                     285      sub.l        #1, d5
+000001E2  5281                     286      add.l        #1, d1 
+000001E4  60CA                     287      bra         .innerLoop
+000001E6                           288      
+000001E6                           289  .nextRow
+000001E6                           290      * Update counters
+000001E6  4CDF 0020                291      movem.l     (sp)+, d5
+000001EA  5386                     292      sub.l       #1, d6
+000001EC  49F9 0000020E            293      lea         drawPositionX, a4
+000001F2  3214                     294      move.w      (a4),d1      // draw pos x restored init pos
+000001F4  5382                     295      sub.l       #1, d2       // draw pos y increment by 1 
+000001F6                           296  
+000001F6                           297      * Update a2 to next row start point
+000001F6  D684                     298      add.l       d4, d3
+000001F8  2443                     299      move.l      d3, a2  
+000001FA                           300      
+000001FA  60A6                     301      bra         .outerLoop
+000001FC                           302      
+000001FC                           303  .return 
+000001FC  4CDF 7FFF                304      movem.l     (sp)+, ALL_REG
+00000200  7000                     305      move.l      #0, d0
+00000202  4E75                     306      rts   
+00000204                           307      
+00000204                           308  .error
+00000204  4CDF 7FFF                309      movem.l     (sp)+, ALL_REG
+00000208  7001                     310      move.l      #1,d0
+0000020A  4E75                     311      rts
+0000020C                           312      
+0000020C                           313      
+0000020C                           314  bitsPerPixel    ds.w    1
+0000020E                           315  drawPositionX   ds.w    1
+00000210                           316  drawPositionY   ds.w    1
+00000212                           317  
+00000212                           318  
+00000212                           319  
+00000212                           320  
+00000212                           321  
+00000212                           322  
+00000212                           323  
+00000212                           324  
+00000212                           325  
+00000212                           326  
+00000212                           327  
+00000212                           328  
+00000212                           329  
+00000212                           330  
+00000212                           331  
+Line 332 WARNING: END directive missing, starting address not set
+
+No errors detected
+1 warning generated
+
+
+SYMBOL TABLE INFORMATION
+Symbol-name         Value
+-------------------------
+ALL_REG             7FFF
+BITSPERPIXEL        20C
+BMP_DRAW            140
+BMP_DRAW:ERROR      204
+BMP_DRAW:INNERLOOP  1B0
+BMP_DRAW:NEXTROW    1E6
+BMP_DRAW:OUTERLOOP  1A2
+BMP_DRAW:RETURN     1FC
+BMP_DRAW:UPDATECOUNTER  1E0
+BMP_LOAD            6A
+BMP_LOAD:AFTERCHECK  11A
+BMP_LOAD:CHECK32    D6
+BMP_LOAD:ERROR      132
+BMP_LOAD:FILECONVERT  104
+BMP_UNLOAD          0
+BMP_UNLOAD:AFTERCONVERT  30
+BMP_UNLOAD:ERROR    64
+BMP_UNLOAD:FILECONVERT  1A
+COLOR_FORMAT_OFFSET  1C
+DRAWPOSITIONX       20E
+DRAWPOSITIONY       210
+DRAW_PIXEL_CMD      52
+FILE_TASK_FCLOSE    38
+FILE_TASK_FCREATE   34
+FILE_TASK_FOPEN     33
+FILE_TASK_FREAD     35
+FILE_TASK_FWRITE    36
+FILE_TASK_PRINT     D
+HEIGHT_OFFSET       16
+IMAGE_FORMAT_OFFSET  0
+IMAGE_OFFSET        36
+SET_PEN_COLOR_CMD   50
+SIZE_OFFSET         2
+SWITCHENDIAN        138
+WIDTH_OFFSET        12

@@ -1,0 +1,1054 @@
+000011F0 Starting Address
+Assembler used: EASy68K Editor/Assembler v5.16.01
+Created On: 10/6/2024 10:49:26 PM
+
+00000000                             1  *-----------------------------------------------------------
+00000000                             2  * Title      : 
+00000000                             3  * Written by :
+00000000                             4  * Date       :
+00000000                             5  * Description:
+00000000                             6  *-----------------------------------------------------------
+00001000                             7      ORG    $1000    
+00001000  =0000000D                  8  TASK_PRINT  EQU 13
+00001000  =DEADDEAD                  9  SENTINEL    EQU $deaddead
+00001000                            10  ALL_REG                 REG     d0-d7/d0-d6 
+00001000                            11  
+00001000                            12      INCLUDE "bitmap.X68"
+00001000  =0000000D                 13  File_TASK_PRINT      EQU     13
+00001000  =00000033                 14  FILE_TASK_FOPEN      EQU     51
+00001000  =00000034                 15  FILE_TASK_FCREATE    EQU     52
+00001000  =00000035                 16  FILE_TASK_FREAD      EQU     53
+00001000  =00000036                 17  FILE_TASK_FWRITE     EQU     54
+00001000  =00000038                 18  FILE_TASK_FCLOSE     EQU     56
+00001000  =00000000                 19  IMAGE_FORMAT_OFFSET  EQU     0
+00001000  =00000002                 20  SIZE_OFFSET          EQU     2
+00001000  =0000001C                 21  COLOR_FORMAT_OFFSET  EQU     28
+00001000  =00000012                 22  WIDTH_OFFSET         EQU     18
+00001000  =00000016                 23  HEIGHT_OFFSET        EQU     22
+00001000  =00000036                 24  IMAGE_OFFSET         EQU     54
+00001000  =00000050                 25  SET_PEN_COLOR_CMD    EQU     80
+00001000  =00000052                 26  DRAW_PIXEL_CMD       EQU     82
+00001000                            27  
+00001000                            28  
+00001000                            29  
+00001000                            30  bmp_unload:
+00001000  48E7 6040                 31          movem.l    d1-d2/a1, -(sp)
+00001004  264A                      32          move.l      a2, a3
+00001006                            33          *Compute pixel numbers
+00001006  202B 0012                 34          move.l      WIDTH_OFFSET(a3),d0
+0000100A  6100 012C                 35          bsr         switchEndian
+0000100E  2400                      36          move.l      d0, d2
+00001010  202B 0016                 37          move.l      HEIGHT_OFFSET(a3),d0
+00001014  6100 0122                 38          bsr         switchEndian
+00001018  C4C0                      39          mulu        d0, d2     // d1 stores pixel numbers
+0000101A                            40  .fileConvert:
+0000101A                            41          *convert all image pixel to 68k format
+0000101A  202B 0036                 42          move.l      IMAGE_OFFSET(a3),d0
+0000101E  E198                      43          rol.l       #8, d0
+00001020  2740 0036                 44          move.l      d0, IMAGE_OFFSET(a3)
+00001024  588B                      45          add.l       #4, a3
+00001026  5382                      46          sub.l       #1, d2
+00001028  B4BC 00000000             47          cmp.l       #0, d2
+0000102E  66EA                      48          bne         .fileConvert
+00001030                            49  
+00001030                            50  .afterConvert       
+00001030                            51          * d0 used for filewrite cmd
+00001030                            52          * a1 for output filename 
+00001030                            53          * d2 is used to store size to write
+00001030  2401                      54          move.l     d1, d2
+00001032  103C 0034                 55          move.b     #FILE_TASK_FCREATE, d0
+00001036  4E4F                      56          trap #15
+00001038  B03C 0000                 57          cmp.b      #0, d0
+0000103C  6600 0026                 58          bne       .error
+00001040                            59          * After read d1 stores filename
+00001040  103C 0036                 60          move.b     #FILE_TASK_FWRITE,d0
+00001044  224A                      61          move.l     a2, a1
+00001046                            62          
+00001046  4E4F                      63          trap #15
+00001048  B03C 0000                 64          cmp.b      #0, d0
+0000104C  6600 0016                 65          bne        .error
+00001050                            66          
+00001050                            67          * Close file
+00001050  103C 0038                 68          move.b     #FILE_TASK_FCLOSE,d0
+00001054  4E4F                      69          trap #15
+00001056  B07C 0000                 70          cmp        #0, d0
+0000105A  6600 0008                 71          bne        .error
+0000105E                            72          
+0000105E  4CDF 0206                 73          movem.l    (sp)+, d1-d2/a1
+00001062  4E75                      74          rts
+00001064                            75  
+00001064                            76  .error
+00001064  103C 0001                 77      move.b      #1,d0
+00001068  4E75                      78      rts
+0000106A                            79  
+0000106A                            80  
+0000106A                            81  bmp_load:
+0000106A                            82          * a1 is opening file name
+0000106A                            83          *move.l      (a1),d3         //copy file name in d3
+0000106A  48E7 3040                 84          movem.l    d2-d3/a1, -(sp)
+0000106E  2401                      85          move.l     d1, d2
+00001070  103C 0033                 86          move.b     #FILE_TASK_FOPEN, d0
+00001074  4E4F                      87          trap #15
+00001076  B03C 0000                 88          cmp.b      #0, d0
+0000107A  6600 00B6                 89          bne       .error
+0000107E                            90          
+0000107E  2601                      91          move.l      d1,d3 
+00001080                            92          * file name stored in d1
+00001080                            93          * d2.l num of bytes to read for FILE_READ        
+00001080                            94          * a1 is buffer to read
+00001080                            95          * output d1.l as size read
+00001080  103C 0035                 96          move.b     #FILE_TASK_FREAD,d0
+00001084  224A                      97          move.l     a2, a1
+00001086                            98          
+00001086  4E4F                      99          trap #15
+00001088  B03C 0000                100          cmp.b      #0, d0
+0000108C  6600 00A4                101          bne        .error
+00001090                           102          
+00001090                           103          *check width < 1024
+00001090  202A 0012                104          move.l      WIDTH_OFFSET(a2),d0
+00001094  7204                     105          move.l      #4, d1
+00001096  6100 00A0                106          bsr         switchEndian
+0000109A  B0BC 00000400            107          cmp.l      #1024, d0
+000010A0  6200 0090                108          bhi        .error
+000010A4                           109          *check height < 1024
+000010A4  202A 0016                110          move.l      HEIGHT_OFFSET(a2),d0
+000010A8  6100 008E                111          bsr         switchEndian
+000010AC  B0BC 00000400            112          cmp.l      #1024, d0
+000010B2  6200 007E                113          bhi         .error
+000010B6                           114          *check bmp format is 24 or 32
+000010B6  4280                     115          clr.l       d0
+000010B8  202A 001C                116          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010BC  7202                     117          move.l      #2, d1
+000010BE  6100 0078                118          bsr         switchEndian
+000010C2  B07C 0018                119          cmp.w       #24, d0          // check 24
+000010C6  6600 000E                120          bne         .check32         // if not 24, check 32
+000010CA  33FC 0003 00001204       121          move.w      #3, bitsPerPixel // if 24, assign bitsPerPixel
+000010D2  6000 0046                122          bra         .afterCheck
+000010D6                           123  .check32:
+000010D6  4280                     124          clr.l       d0
+000010D8  202A 001C                125          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010DC  6100 005A                126          bsr         switchEndian
+000010E0  B07C 0020                127          cmp.w       #32, d0
+000010E4  6600 004C                128          bne         .error   
+000010E8  33FC 0004 00001204       129          move.w      #4, bitsPerPixel
+000010F0                           130          *Compute pixel numbers
+000010F0  202A 0012                131          move.l      WIDTH_OFFSET(a2),d0
+000010F4  6100 0042                132          bsr         switchEndian
+000010F8  2200                     133          move.l      d0, d1  //weight
+000010FA  202A 0016                134          move.l      HEIGHT_OFFSET(a2),d0
+000010FE  6100 0038                135          bsr         switchEndian    //height
+00001102  C2C0                     136          mulu        d0, d1      // d1 stores pixel numbers
+00001104                           137  .fileConvert:
+00001104                           138          *convert all image pixel to 68k format
+00001104  202A 0036                139          move.l      IMAGE_OFFSET(a2),d0
+00001108  E098                     140          ror.l       #8, d0
+0000110A  2540 0036                141          move.l      d0, IMAGE_OFFSET(a2)
+0000110E  588A                     142          add.l       #4, a2
+00001110  5381                     143          sub.l       #1, d1
+00001112  B2BC 00000000            144          cmp.l       #0, d1
+00001118  66EA                     145          bne         .fileConvert
+0000111A                           146  .afterCheck
+0000111A  3203                     147          move        d3, d1 // restore file name
+0000111C                           148          * Close file
+0000111C  103C 0038                149          move.b     #FILE_TASK_FCLOSE,d0
+00001120  4E4F                     150          trap #15
+00001122  B07C 0000                151          cmp        #0, d0
+00001126  6600 000A                152          bne        .error
+0000112A                           153          
+0000112A  2202                     154          move.l     d2, d1
+0000112C  4CDF 020C                155          movem.l    (sp)+,d2-d3/a1
+00001130  4E75                     156          rts
+00001132                           157  
+00001132                           158  .error
+00001132  103C 0001                159      move.b      #1,d0
+00001136  4E75                     160      rts
+00001138                           161      
+00001138                           162  switchEndian:
+00001138                           163      * d5 is temp storage for d2
+00001138  E058                     164      ror.w       #8, d0     ; Rotate the lower word to swap the lowest bytes
+0000113A  4840                     165      swap        d0         ; Swap the upper and lower 16-bit words
+0000113C  E058                     166      ror.w       #8, d0     ; Rotate the lower word to swap the previously upper bytes
+0000113E  4E75                     167      rts
+00001140                           168  
+00001140                           169  bmp_draw
+00001140  48E7 0138                170      movem.l      d7/a2-a4, -(sp)
+00001144                           171      * Assign drawposition x and y and load bitsPerPixel to a3
+00001144  47F9 00001204            172       lea         bitsPerPixel, a3   
+0000114A  33C1 00001206            173       move.w       d1, drawPositionX
+00001150  33C2 00001208            174       move.w       d2, drawPositionY 
+00001156                           175       
+00001156                           176       * check rect y is in bound
+00001156  2449                     177       move.l      a1, a2
+00001158  2004                     178       move.l      d4, d0
+0000115A  5240                     179       addq        #1, d0
+0000115C  BC80                     180       cmp.l       d0, d6   
+0000115E  6E00 009C                181       bgt         .error     // if rect.y is bigger than start.y index + 1, err
+00001162                           182       
+00001162                           183       * check rect x is in bound
+00001162  2003                     184       move.l      d3, d0
+00001164  D085                     185       add.l       d5, d0
+00001166  2E29 0012                186       move.l      WIDTH_OFFSET(a1),d7
+0000116A  E05F                     187       ror.w       #8, d7     ; Rotate the lower word to swap the lowest bytes
+0000116C  4847                     188       swap        d7         ; Swap the upper and lower 16-bit words
+0000116E  E05F                     189       ror.w       #8, d7 
+00001170  B087                     190       cmp.l       d7,d0
+00001172  6E00 0088                191       bgt         .error   // if d3+d5 bigger than width, err
+00001176                           192       
+00001176                           193       * Check draw position is low enough to contain picture
+00001176  BC82                     194       cmp.l       d2, d6
+00001178  6E00 0082                195       bgt         .error       // if rect.y is bigger than draw pos.y, err
+0000117C                           196       
+0000117C                           197       * Store offset between rect.y and image height
+0000117C  2029 0016                198       move.l      HEIGHT_OFFSET(a1),d0
+00001180  61B6                     199       bsr         switchEndian    
+00001182  9084                     200       sub.l       d4, d0
+00001184  5380                     201       sub.l       #1, d0       
+00001186                           202      
+00001186  D5FC 00000036            203       add.l       #IMAGE_OFFSET, a2 // now a2 represent pixel data start
+0000118C                           204       
+0000118C                           205       * Start locating start point
+0000118C                           206       * locate row
+0000118C  2E29 0012                207       move.l      WIDTH_OFFSET(a1),d7
+00001190  E05F                     208       ror.w       #8, d7
+00001192  4847                     209       swap        d7         
+00001194  E05F                     210       ror.w       #8, d7 
+00001196                           211       
+00001196  CED3                     212       mulu        (a3),d7           // every pixel is 3 bits, with Width num of pixels
+00001198  2807                     213       move.l      d7, d4         // copy d7 to d4. d4 is number of bits per row       
+0000119A  CEC0                     214       mulu        d0, d7
+0000119C  D5C7                     215       add.l       d7, a2
+0000119E                           216       
+0000119E                           217       * locate column
+0000119E  C6D3                     218       mulu        (a3),d3
+000011A0  D5C3                     219       add.l       d3, a2         // now a2 is starting point address
+000011A2  260A                     220       move.l      a2, d3         // d3 is now the address of starting point
+000011A4                           221       * start loop
+000011A4                           222  .outerLoop
+000011A4                           223      *check row d2 is 0
+000011A4  BCBC 00000000            224      cmp.l       #0, d6
+000011AA  6700 0048                225      beq         .return
+000011AE  48E7 0400                226      movem.l      d5, -(sp)     
+000011B2                           227  .innerLoop
+000011B2                           228      * start printing
+000011B2                           229      * check if d3 is 0
+000011B2  BABC 00000000            230      cmp.l       #0, d5
+000011B8  6700 0024                231      beq         .nextRow
+000011BC                           232  
+000011BC  2012                     233      move.l      (a2),d0
+000011BE  588A                     234      add.l        #4,a2     // update a2
+000011C0                           235      
+000011C0                           236      *check if is background
+000011C0  B0BC 00000002            237      cmp.l       #$00000002, d0
+000011C6  6700 0010                238      beq         .updateCounter
+000011CA                           239      * start to print pixel
+000011CA  2E01                     240      move.l      d1, d7      // temp store d1 at d7
+000011CC  2200                     241      move.l      d0, d1      // store pen color in d1
+000011CE  7050                     242      move.l      #SET_PEN_COLOR_CMD, d0
+000011D0  4E4F                     243      trap        #15
+000011D2                           244      
+000011D2  2207                     245      move.l      d7, d1      // restore d1 draw x
+000011D4  7052                     246      move.l      #DRAW_PIXEL_CMD, d0
+000011D6  4E4F                     247      trap        #15
+000011D8                           248  
+000011D8                           249  .updateCounter
+000011D8                           250      * update d2, a2 counter and print next in row
+000011D8  5385                     251      sub.l        #1, d5
+000011DA  5281                     252      add.l        #1, d1 
+000011DC  60D4                     253      bra         .innerLoop
+000011DE                           254      
+000011DE                           255  .nextRow
+000011DE                           256      * Update counters
+000011DE  4CDF 0020                257      movem.l     (sp)+, d5
+000011E2  5386                     258      sub.l       #1, d6
+000011E4  49F9 00001206            259      lea         drawPositionX, a4
+000011EA  3214                     260      move.w      (a4),d1      // draw pos x restored init pos
+000011EC  5382                     261      sub.l       #1, d2       // draw pos y increment by 1 
+000011EE                           262  
+000011EE                           263      * Update a2 to next row start point
+000011EE  D684                     264      add.l       d4, d3
+000011F0  2443                     265      move.l      d3, a2  
+000011F2                           266      
+000011F2  60B0                     267      bra         .outerLoop
+000011F4                           268      
+000011F4                           269  .return 
+000011F4  4CDF 1C80                270      movem.l     (sp)+, d7/a2-a4
+000011F8  7000                     271      move.l      #0, d0
+000011FA  4E75                     272      rts   
+000011FC                           273      
+000011FC                           274  .error
+000011FC  4CDF 1C80                275      movem.l     (sp)+, d7/a2-a4
+00001200  7001                     276      move.l      #1,d0
+00001202  4E75                     277      rts
+00001204                           278      
+00001204                           279      
+00001204                           280  bitsPerPixel    ds.w    1
+00001206                           281  drawPositionX   ds.w    1
+00001208                           282  drawPositionY   ds.w    1
+0000120A                           283  
+0000120A                           284  
+0000120A                           285  
+0000120A                           286  
+0000120A                           287  
+0000120A                           288  
+0000120A                           289  
+0000120A                           290  
+0000120A                           291  
+0000120A                           292  
+0000120A                           293  
+0000120A                           294  -------------------- end include --------------------
+0000120A                           295      INCLUDE "GameManager.X68"
+0000120A                           296         
+00001000                           297      ORG    $1000 ; first instruction of program
+00001000                           298      INCLUDE 'bitmap.X68'
+00001000  =0000000D                299  File_TASK_PRINT      EQU     13
+00001000  =00000033                300  FILE_TASK_FOPEN      EQU     51
+00001000  =00000034                301  FILE_TASK_FCREATE    EQU     52
+00001000  =00000035                302  FILE_TASK_FREAD      EQU     53
+00001000  =00000036                303  FILE_TASK_FWRITE     EQU     54
+00001000  =00000038                304  FILE_TASK_FCLOSE     EQU     56
+00001000  =00000000                305  IMAGE_FORMAT_OFFSET  EQU     0
+00001000  =00000002                306  SIZE_OFFSET          EQU     2
+00001000  =0000001C                307  COLOR_FORMAT_OFFSET  EQU     28
+00001000  =00000012                308  WIDTH_OFFSET         EQU     18
+00001000  =00000016                309  HEIGHT_OFFSET        EQU     22
+00001000  =00000036                310  IMAGE_OFFSET         EQU     54
+00001000  =00000050                311  SET_PEN_COLOR_CMD    EQU     80
+00001000  =00000052                312  DRAW_PIXEL_CMD       EQU     82
+00001000                           313  
+00001000                           314  
+00001000                           315  
+00001000                           316  bmp_unload:
+00001000  48E7 6040                317          movem.l    d1-d2/a1, -(sp)
+00001004  264A                     318          move.l      a2, a3
+00001006                           319          *Compute pixel numbers
+00001006  202B 0012                320          move.l      WIDTH_OFFSET(a3),d0
+0000100A  6100 012C                321          bsr         switchEndian
+0000100E  2400                     322          move.l      d0, d2
+00001010  202B 0016                323          move.l      HEIGHT_OFFSET(a3),d0
+00001014  6100 0122                324          bsr         switchEndian
+00001018  C4C0                     325          mulu        d0, d2     // d1 stores pixel numbers
+0000101A                           326  .fileConvert:
+0000101A                           327          *convert all image pixel to 68k format
+0000101A  202B 0036                328          move.l      IMAGE_OFFSET(a3),d0
+0000101E  E198                     329          rol.l       #8, d0
+00001020  2740 0036                330          move.l      d0, IMAGE_OFFSET(a3)
+00001024  588B                     331          add.l       #4, a3
+00001026  5382                     332          sub.l       #1, d2
+00001028  B4BC 00000000            333          cmp.l       #0, d2
+0000102E  66EA                     334          bne         .fileConvert
+00001030                           335  
+00001030                           336  .afterConvert       
+00001030                           337          * d0 used for filewrite cmd
+00001030                           338          * a1 for output filename 
+00001030                           339          * d2 is used to store size to write
+00001030  2401                     340          move.l     d1, d2
+00001032  103C 0034                341          move.b     #FILE_TASK_FCREATE, d0
+00001036  4E4F                     342          trap #15
+00001038  B03C 0000                343          cmp.b      #0, d0
+0000103C  6626                     344          bne       .error
+0000103E                           345          * After read d1 stores filename
+0000103E  103C 0036                346          move.b     #FILE_TASK_FWRITE,d0
+00001042  224A                     347          move.l     a2, a1
+00001044                           348          
+00001044  4E4F                     349          trap #15
+00001046  B03C 0000                350          cmp.b      #0, d0
+0000104A  6618                     351          bne        .error
+0000104C                           352          
+0000104C                           353          * Close file
+0000104C  103C 0038                354          move.b     #FILE_TASK_FCLOSE,d0
+00001050  4E4F                     355          trap #15
+00001052  B07C 0000                356          cmp        #0, d0
+00001056  660C                     357          bne        .error
+00001058                           358          
+00001058  4CDF 0206                359          movem.l    (sp)+, d1-d2/a1
+0000105C  4E75                     360          rts
+0000105E                           361  
+Line 362 ERROR: Symbol defined more than once
+0000105E                           362  .error
+0000105E  103C 0001                363      move.b      #1,d0
+00001062  4E75                     364      rts
+00001064                           365  
+00001064                           366  
+Line 367 ERROR: Symbol defined more than once
+00001064                           367  bmp_load:
+00001064                           368          * a1 is opening file name
+00001064                           369          *move.l      (a1),d3         //copy file name in d3
+00001064  48E7 3040                370          movem.l    d2-d3/a1, -(sp)
+00001068  2401                     371          move.l     d1, d2
+0000106A  103C 0033                372          move.b     #FILE_TASK_FOPEN, d0
+0000106E  4E4F                     373          trap #15
+00001070  B03C 0000                374          cmp.b      #0, d0
+00001074  6600 00BC                375          bne       .error
+00001078                           376          
+00001078  2601                     377          move.l      d1,d3 
+0000107A                           378          * file name stored in d1
+0000107A                           379          * d2.l num of bytes to read for FILE_READ        
+0000107A                           380          * a1 is buffer to read
+0000107A                           381          * output d1.l as size read
+0000107A  103C 0035                382          move.b     #FILE_TASK_FREAD,d0
+0000107E  224A                     383          move.l     a2, a1
+00001080                           384          
+00001080  4E4F                     385          trap #15
+00001082  B03C 0000                386          cmp.b      #0, d0
+00001086  6600 00AA                387          bne        .error
+0000108A                           388          
+0000108A                           389          *check width < 1024
+0000108A  202A 0012                390          move.l      WIDTH_OFFSET(a2),d0
+0000108E  7204                     391          move.l      #4, d1
+00001090  6100 00A6                392          bsr         switchEndian
+00001094  B0BC 00000400            393          cmp.l      #1024, d0
+0000109A  6200 0096                394          bhi        .error
+0000109E                           395          *check height < 1024
+0000109E  202A 0016                396          move.l      HEIGHT_OFFSET(a2),d0
+000010A2  6100 0094                397          bsr         switchEndian
+000010A6  B0BC 00000400            398          cmp.l      #1024, d0
+000010AC  6200 0084                399          bhi         .error
+000010B0                           400          *check bmp format is 24 or 32
+000010B0  4280                     401          clr.l       d0
+000010B2  202A 001C                402          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010B6  7202                     403          move.l      #2, d1
+000010B8  617E                     404          bsr         switchEndian
+000010BA  B07C 0018                405          cmp.w       #24, d0          // check 24
+000010BE  6616                     406          bne         .check32         // if not 24, check 32
+000010C0  31FC 0003 1204           407          move.w      #3, bitsPerPixel // if 24, assign bitsPerPixel
+000010C6  6052                     408          bra         .afterCheck
+Line 409 ERROR: Symbol defined more than once
+000010C8                           409  .check32:
+000010C8  4280                     410          clr.l       d0
+000010CA  202A 001C                411          move.l      COLOR_FORMAT_OFFSET(a2),d0
+000010CE  6168                     412          bsr         switchEndian
+000010D0  B07C 0020                413          cmp.w       #32, d0
+000010D4  665C                     414          bne         .error   
+000010D6  31FC 0004 1204           415          move.w      #4, bitsPerPixel
+000010DC                           416          *Compute pixel numbers
+000010DC  202A 0012                417          move.l      WIDTH_OFFSET(a2),d0
+000010E0  6156                     418          bsr         switchEndian
+000010E2  2200                     419          move.l      d0, d1  //weight
+000010E4  202A 0016                420          move.l      HEIGHT_OFFSET(a2),d0
+000010E8  614E                     421          bsr         switchEndian    //height
+000010EA  C2C0                     422          mulu        d0, d1      // d1 stores pixel numbers
+Line 423 ERROR: Symbol defined more than once
+000010EC                           423  .fileConvert:
+000010EC                           424          *convert all image pixel to 68k format
+000010EC  202A 0036                425          move.l      IMAGE_OFFSET(a2),d0
+000010F0  E098                     426          ror.l       #8, d0
+000010F2  2540 0036                427          move.l      d0, IMAGE_OFFSET(a2)
+000010F6  588A                     428          add.l       #4, a2
+000010F8  5381                     429          sub.l       #1, d1
+000010FA  B2BC 00000000            430          cmp.l       #0, d1
+00001100  6602                     431          bne         .fileConvert
+Line 432 ERROR: Symbol defined more than once
+00001102                           432  .afterCheck
+00001102  3203                     433          move        d3, d1 // restore file name
+00001104                           434          * Close file
+00001104  103C 0038                435          move.b     #FILE_TASK_FCLOSE,d0
+00001108  4E4F                     436          trap #15
+0000110A  B07C 0000                437          cmp        #0, d0
+0000110E  6622                     438          bne        .error
+00001110                           439          
+00001110  2202                     440          move.l     d2, d1
+00001112  4CDF 020C                441          movem.l    (sp)+,d2-d3/a1
+00001116  4E75                     442          rts
+00001118                           443  
+Line 444 ERROR: Symbol defined more than once
+00001118                           444  .error
+00001118  103C 0001                445      move.b      #1,d0
+0000111C  4E75                     446      rts
+0000111E                           447      
+Line 448 ERROR: Symbol defined more than once
+0000111E                           448  switchEndian:
+0000111E                           449      * d5 is temp storage for d2
+0000111E  E058                     450      ror.w       #8, d0     ; Rotate the lower word to swap the lowest bytes
+00001120  4840                     451      swap        d0         ; Swap the upper and lower 16-bit words
+00001122  E058                     452      ror.w       #8, d0     ; Rotate the lower word to swap the previously upper bytes
+00001124  4E75                     453      rts
+00001126                           454  
+Line 455 ERROR: Symbol defined more than once
+00001126                           455  bmp_draw
+00001126  48E7 0138                456      movem.l      d7/a2-a4, -(sp)
+0000112A                           457      * Assign drawposition x and y and load bitsPerPixel to a3
+0000112A  47F8 1204                458       lea         bitsPerPixel, a3   
+0000112E  31C1 1206                459       move.w       d1, drawPositionX
+00001132  31C2 1208                460       move.w       d2, drawPositionY 
+00001136                           461       
+00001136                           462       * check rect y is in bound
+00001136  2449                     463       move.l      a1, a2
+00001138  2004                     464       move.l      d4, d0
+0000113A  5240                     465       addq        #1, d0
+0000113C  BC80                     466       cmp.l       d0, d6   
+0000113E  6E00 00BC                467       bgt         .error     // if rect.y is bigger than start.y index + 1, err
+00001142                           468       
+00001142                           469       * check rect x is in bound
+00001142  2003                     470       move.l      d3, d0
+00001144  D085                     471       add.l       d5, d0
+00001146  2E29 0012                472       move.l      WIDTH_OFFSET(a1),d7
+0000114A  E05F                     473       ror.w       #8, d7     ; Rotate the lower word to swap the lowest bytes
+0000114C  4847                     474       swap        d7         ; Swap the upper and lower 16-bit words
+0000114E  E05F                     475       ror.w       #8, d7 
+00001150  B087                     476       cmp.l       d7,d0
+00001152  6E00 00A8                477       bgt         .error   // if d3+d5 bigger than width, err
+00001156                           478       
+00001156                           479       * Check draw position is low enough to contain picture
+00001156  BC82                     480       cmp.l       d2, d6
+00001158  6E00 00A2                481       bgt         .error       // if rect.y is bigger than draw pos.y, err
+0000115C                           482       
+0000115C                           483       * Store offset between rect.y and image height
+0000115C  2029 0016                484       move.l      HEIGHT_OFFSET(a1),d0
+00001160  61D6                     485       bsr         switchEndian    
+00001162  9084                     486       sub.l       d4, d0
+00001164  5380                     487       sub.l       #1, d0       
+00001166                           488      
+00001166  D5FC 00000036            489       add.l       #IMAGE_OFFSET, a2 // now a2 represent pixel data start
+0000116C                           490       
+0000116C                           491       * Start locating start point
+0000116C                           492       * locate row
+0000116C  2E29 0012                493       move.l      WIDTH_OFFSET(a1),d7
+00001170  E05F                     494       ror.w       #8, d7
+00001172  4847                     495       swap        d7         
+00001174  E05F                     496       ror.w       #8, d7 
+00001176                           497       
+00001176  CED3                     498       mulu        (a3),d7           // every pixel is 3 bits, with Width num of pixels
+00001178  2807                     499       move.l      d7, d4         // copy d7 to d4. d4 is number of bits per row       
+0000117A  CEC0                     500       mulu        d0, d7
+0000117C  D5C7                     501       add.l       d7, a2
+0000117E                           502       
+0000117E                           503       * locate column
+0000117E  C6D3                     504       mulu        (a3),d3
+00001180  D5C3                     505       add.l       d3, a2         // now a2 is starting point address
+00001182  260A                     506       move.l      a2, d3         // d3 is now the address of starting point
+00001184                           507       * start loop
+Line 508 ERROR: Symbol defined more than once
+00001184                           508  .outerLoop
+00001184                           509      *check row d2 is 0
+00001184  BCBC 00000000            510      cmp.l       #0, d6
+0000118A  6768                     511      beq         .return
+0000118C  48E7 0400                512      movem.l      d5, -(sp)     
+Line 513 ERROR: Symbol defined more than once
+00001190                           513  .innerLoop
+00001190                           514      * start printing
+00001190                           515      * check if d3 is 0
+00001190  BABC 00000000            516      cmp.l       #0, d5
+00001196  6746                     517      beq         .nextRow
+00001198                           518  
+00001198  2012                     519      move.l      (a2),d0
+0000119A  588A                     520      add.l        #4,a2     // update a2
+0000119C                           521      
+0000119C                           522      *check if is background
+0000119C  B0BC 00000002            523      cmp.l       #$00000002, d0
+000011A2  6734                     524      beq         .updateCounter
+000011A4                           525      * start to print pixel
+000011A4  2E01                     526      move.l      d1, d7      // temp store d1 at d7
+000011A6  2200                     527      move.l      d0, d1      // store pen color in d1
+000011A8  7050                     528      move.l      #SET_PEN_COLOR_CMD, d0
+000011AA  4E4F                     529      trap        #15
+000011AC                           530      
+000011AC  2207                     531      move.l      d7, d1      // restore d1 draw x
+000011AE  7052                     532      move.l      #DRAW_PIXEL_CMD, d0
+000011B0  4E4F                     533      trap        #15
+000011B2                           534  
+Line 535 ERROR: Symbol defined more than once
+000011B2                           535  .updateCounter
+000011B2                           536      * update d2, a2 counter and print next in row
+000011B2  5385                     537      sub.l        #1, d5
+000011B4  5281                     538      add.l        #1, d1 
+000011B6  60FA                     539      bra         .innerLoop
+000011B8                           540      
+Line 541 ERROR: Symbol defined more than once
+000011B8                           541  .nextRow
+000011B8                           542      * Update counters
+000011B8  4CDF 0020                543      movem.l     (sp)+, d5
+000011BC  5386                     544      sub.l       #1, d6
+000011BE  49F8 1206                545      lea         drawPositionX, a4
+000011C2  3214                     546      move.w      (a4),d1      // draw pos x restored init pos
+000011C4  5382                     547      sub.l       #1, d2       // draw pos y increment by 1 
+000011C6                           548  
+000011C6                           549      * Update a2 to next row start point
+000011C6  D684                     550      add.l       d4, d3
+000011C8  2443                     551      move.l      d3, a2  
+000011CA                           552      
+000011CA  60D8                     553      bra         .outerLoop
+000011CC                           554      
+Line 555 ERROR: Symbol defined more than once
+000011CC                           555  .return 
+000011CC  4CDF 1C80                556      movem.l     (sp)+, d7/a2-a4
+000011D0  7000                     557      move.l      #0, d0
+000011D2  4E75                     558      rts   
+000011D4                           559      
+Line 560 ERROR: Symbol defined more than once
+000011D4                           560  .error
+000011D4  4CDF 1C80                561      movem.l     (sp)+, d7/a2-a4
+000011D8  7001                     562      move.l      #1,d0
+000011DA  4E75                     563      rts
+000011DC                           564      
+000011DC                           565      
+Line 566 ERROR: Symbol defined more than once
+000011DC                           566  bitsPerPixel    ds.w    1
+Line 567 ERROR: Symbol defined more than once
+000011DE                           567  drawPositionX   ds.w    1
+Line 568 ERROR: Symbol defined more than once
+000011E0                           568  drawPositionY   ds.w    1
+000011E2                           569  
+000011E2                           570  
+000011E2                           571  
+000011E2                           572  
+000011E2                           573  
+000011E2                           574  
+000011E2                           575  
+000011E2                           576  
+000011E2                           577  
+000011E2                           578  
+000011E2                           579  
+000011E2                           580  -------------------- end include --------------------
+000011E2                           581  ALL_REG                 REG     d0-d7/d0-d6    
+000011E2                           582  
+000011E2  =0000000B                583  CLEAR_SCREEN_COMMAND    equ     11
+000011E2  =0000000D                584  TASK_PRINT  equ 13
+000011E2  =00000011                585  DOUBLE_BUFFERED_MODE    equ 17
+000011E2  =00000013                586  GET_USER_INPUT_COMMAND  equ     19
+000011E2  =0000005C                587  DRAWING_MODE_TRAP_CODE  equ 92
+000011E2  =0000005E                588  REPAINT_SCREEN_TRAP_CODE    equ 94
+000011E2                           589  
+000011E2  =00000025                590  KEY_LEFT_INPUT          equ     $25
+000011E2  =00000026                591  KEY_UP_INPUT            equ     $26
+000011E2  =00000027                592  KEY_RIGHT_INPUT         equ     $27
+000011E2  =00000028                593  KEY_DOWN_INPUT          equ     $28
+000011E2                           594  
+000011E2  =00000032                595  PLAYER_MOVE_DIST        equ     50
+000011E2  =00000002                596  ENEMY_MOVE_DIST         equ     2
+000011E2  =0000FF00                597  CLEAR_SCREEN_MAGIC_VAL  equ     $FF00
+000011E2                           598  
+000011E2                           599  
+Line 600 ERROR: Symbol value differs between first and second pass
+000011E2                           600  START:
+000011E2  705C                     601      move.l  #DRAWING_MODE_TRAP_CODE,d0
+000011E4  7211                     602      move.l  #DOUBLE_BUFFERED_MODE,d1
+000011E6  4E4F                     603      trap    #15
+000011E8  33FC 00FA 000014DE       604      move.w  #250, PLAYER_X    // draw x
+000011F0  33FC 00FA 000014E0       605      move.w  #250, PLAYER_Y    // draw y
+000011F8                           606          
+000011F8  33FC 0064 000014E6       607      move.w  #100, ENEMY_X
+00001200  33FC 0064 000014E8       608      MOVE.W  #100, ENEMY_Y
+00001208  48E7 6070                609      movem.l d1-d2/a1-a3, -(sp)
+0000120C  6100 0060                610      bsr     loadPlayer
+00001210  B0BC 00000001            611      cmp.l   #1, d0
+00001216  6700 002E                612      beq     .error
+0000121A  4CDF 0406                613      movem.l (sp)+, d1-d2/a2
+0000121E                           614      
+0000121E  48E7 6070                615      movem.l d1-d2/a1-a3, -(sp)
+00001222  6100 0070                616      bsr     loadEnemy
+00001226  B0BC 00000001            617      cmp.l   #1, d0
+0000122C  6700 0018                618      beq     .error
+00001230  4CDF 0406                619      movem.l (sp)+, d1-d2/a2
+00001234  6000 0016                620      bra     gameLoop
+Line 621 ERROR: Symbol value differs between first and second pass
+00001238                           621  .error
+00001238  21C0 0001                622      move.l  d0, 1
+0000123C  4E75                     623      rts
+0000123E                           624      
+0000123E                           625      
+Line 626 ERROR: Symbol value differs between first and second pass
+0000123E                           626  gameLoop:
+0000123E  4EB9 000012BA            627      jsr     clearScreen
+00001244  4EB9 00001340            628      jsr     handleInput
+0000124A  6100 007C                629      bsr     drawPlayer
+0000124E  4EB9 000013CA            630      jsr     UpdateEnemy
+00001254  6100 00AC                631      bsr     drawEnemy
+00001258  4EB9 00001338            632      jsr     swapBuffers
+0000125E                           633      
+0000125E  60EC                     634      bra     gameloop
+00001260                           635    
+Line 636 ERROR: Symbol value differs between first and second pass
+00001260                           636  loadPlayer:
+00001260  43F9 000014A0            637      lea     INPUT_FILE, a1
+00001266  45F9 000014EA            638      lea     FILEBUFFER, a2
+0000126C  223C 00006000            639      move.l  #FILESIZE,d1
+00001272  6100 FDF6                640      bsr     bmp_load
+00001276  B03C 0000                641      cmp.b   #0, d0
+0000127A  6600 0012                642      bne     .error
+0000127E  4E75                     643      rts
+Line 644 ERROR: Symbol value differs between first and second pass
+00001280                           644  .error
+00001280  21C0 0001                645      move.l  d0, 1
+00001284  4E75                     646      rts
+00001286                           647      
+Line 648 ERROR: Symbol value differs between first and second pass
+00001286                           648  loadEnemy
+00001286  43F9 000014B1            649      lea     INPUT_FILE1, a1
+0000128C  45F9 000074EA            650      lea     FILEBUFFER1, a2
+00001292  223C 00005000            651      move.l  #FILESIZE1,d1
+00001298  6100 FDD0                652      bsr     bmp_load
+0000129C  B03C 0000                653      cmp.b   #0, d0
+000012A0  6600 0012                654      bne     .error
+000012A4  4E75                     655      rts
+Line 656 ERROR: Symbol value differs between first and second pass
+000012A6                           656  .error
+000012A6  21C0 0001                657      move.l  d0, 1
+000012AA  4E75                     658      rts
+000012AC                           659      
+Line 660 ERROR: Symbol value differs between first and second pass
+000012AC                           660  clearScreen
+000012AC  103C 000B                661      move.b  #CLEAR_SCREEN_COMMAND,d0
+000012B0  223C 0000FF00            662      move.l  #CLEAR_SCREEN_MAGIC_VAL,d1
+000012B6  4E4F                     663      TRAP    #15
+000012B8  4E75                     664      rts
+Line 665 ERROR: Symbol value differs between first and second pass
+000012BA                           665  drawPlayer:
+000012BA  4281                     666      clr.l    d1
+000012BC  4282                     667      clr.l    d2     // clear d1d2, since later will move word into d1d2
+000012BE  43F9 000014EA            668      lea      FILEBUFFER, a1
+000012C4  45F9 000014DE            669      lea      PLAYER_X, a2
+000012CA  47F9 000014E0            670      lea      PLAYER_Y, a3 
+000012D0  3212                     671      move.w   (a2),d1
+000012D2  3413                     672      move.w   (a3),d2
+000012D4  7605                     673      move.l   #5, d3
+000012D6  7846                     674      move.l   #70, d4
+000012D8  7A41                     675      move.l   #65, d5
+000012DA  7C41                     676      move.l   #65, d6
+000012DC                           677  
+000012DC  6100 FE62                678      bsr      bmp_draw
+000012E0  B07C 0000                679      cmp      #0, d0
+000012E4  6600 0012                680      bne      .error
+000012E8  4E75                     681      rts
+Line 682 ERROR: Symbol value differs between first and second pass
+000012EA                           682  .error
+000012EA  700D                     683      moveq   #TASK_PRINT, d0
+000012EC  43F9 000014BB            684      lea     ErrorLabel, a1
+000012F2  4E4F                     685      trap    #15
+000012F4                           686      
+000012F4                           687      
+Line 688 ERROR: Symbol value differs between first and second pass
+000012F4                           688  drawEnemy:
+000012F4  43F9 000074EA            689      lea      FILEBUFFER1, a1
+000012FA                           690      *lea      PLAYER_X, a2
+000012FA                           691      *lea      PLAYER_Y, a3 
+000012FA                           692      *move.w   (a2),d1
+000012FA                           693      *move.w   (a3),d2
+000012FA  45F9 000014E6            694      lea      ENEMY_X, a2
+00001300  47F9 000014E8            695      lea      ENEMY_Y, a3
+00001306  3212                     696      move.w   (a2),d1
+00001308  3413                     697      move.w   (a3),d2
+0000130A  7605                     698      move.l   #5, d3
+0000130C  7819                     699      move.l   #25, d4
+0000130E  7A2D                     700      move.l   #45, d5
+00001310  7C19                     701      move.l   #25, d6
+00001312                           702  
+00001312  6100 FE2C                703      bsr      bmp_draw
+00001316  B07C 0000                704      cmp      #0, d0
+0000131A  6600 0012                705      bne      .error
+0000131E  4E75                     706      rts
+Line 707 ERROR: Symbol value differs between first and second pass
+00001320                           707  .error
+00001320  700D                     708      moveq   #TASK_PRINT, d0
+00001322  43F9 000014BB            709      lea     ErrorLabel, a1
+00001328  4E4F                     710      trap    #15
+0000132A                           711      
+Line 712 ERROR: Symbol value differs between first and second pass
+0000132A                           712  swapBuffers:
+0000132A  103C 005E                713      move.b  #REPAINT_SCREEN_TRAP_CODE,d0
+0000132E  4E4F                     714      TRAP    #15
+00001330  4E75                     715      rts  
+00001332                           716      
+Line 717 ERROR: Symbol value differs between first and second pass
+00001332                           717  handleInput:
+00001332  48E7 FF00                718      movem.l ALL_REG,-(sp)
+00001336                           719  
+00001336  223C 25262728            720      move.l  #(KEY_LEFT_INPUT<<24 + KEY_UP_INPUT<<16 + KEY_RIGHT_INPUT<<8 + KEY_DOWN_INPUT),d1
+0000133C  103C 0013                721      move.b  #GET_USER_INPUT_COMMAND,d0
+00001340  4E4F                     722      TRAP    #15
+00001342  2401                     723      move.l  d1, d2
+00001344  0282 FF000000            724      andi.l  #$FF000000,d2
+0000134A  6600 0038                725      bne     keyLeftInput
+0000134E  2401                     726      move.l  d1, d2
+00001350  0282 00FF0000            727      andi.l  #$00FF0000,d2
+00001356  6600 003C                728      bne     keyUpInput
+0000135A  2401                     729      move.l  d1, d2
+0000135C  0282 0000FF00            730      andi.l  #$0000FF00,d2
+00001362  6600 0040                731      bne     keyRightInput
+00001366  2401                     732      move.l  d1, d2
+00001368  0282 000000FF            733      andi.l  #$000000FF,d2
+0000136E  6600 0044                734      bne     keyDownInput
+00001372                           735          
+00001372  6000 0050                736      bra     doneInput 
+Line 737 ERROR: Symbol value differs between first and second pass
+00001376                           737  keyLeftInput
+00001376  0479 0032 000014DE       738      sub.w   #PLAYER_MOVE_DIST, PLAYER_X
+0000137E  6100 FF48                739      bsr     drawPlayer
+00001382  6000 0040                740      bra     doneInput
+00001386                           741      
+Line 742 ERROR: Symbol value differs between first and second pass
+00001386                           742  keyUpInput
+00001386  0479 0032 000014E0       743      sub.w   #PLAYER_MOVE_DIST, PLAYER_Y
+0000138E  6100 FF38                744      bsr     drawPlayer
+00001392  6000 0030                745      bra     doneInput
+00001396                           746      
+Line 747 ERROR: Symbol value differs between first and second pass
+00001396                           747  keyRightInput
+00001396  0679 0032 000014DE       748      add.w   #PLAYER_MOVE_DIST, PLAYER_X
+0000139E  6100 FF28                749      bsr     drawPlayer
+000013A2  6000 0020                750      bra     doneInput
+000013A6                           751      
+Line 752 ERROR: Symbol value differs between first and second pass
+000013A6                           752  keyDownInput
+000013A6  0679 0032 000014E0       753      add.w   #PLAYER_MOVE_DIST, PLAYER_Y
+000013AE  6100 FF18                754      bsr     drawPlayer
+000013B2  6000 0010                755      bra     doneInput
+000013B6                           756      
+Line 757 ERROR: Symbol value differs between first and second pass
+000013B6                           757  doneInput
+000013B6  4CDF 00FF                758      movem.l (sp)+,ALL_REG
+000013BA                           759          
+000013BA  4E75                     760      rts
+000013BC                           761  
+Line 762 ERROR: Symbol value differs between first and second pass
+000013BC                           762  UpdateEnemy:
+000013BC  48E7 FF00                763      movem.l ALL_REG,-(sp)
+000013C0                           764      *clr.l   d0
+000013C0                           765      *clr.l   d1
+000013C0  41F9 000014E6            766      lea     ENEMY_X, a0
+000013C6  3010                     767      move.w  (a0),d0
+000013C8  43F9 000014DE            768      lea     PLAYER_X, a1
+000013CE  3211                     769      move.w  (a1),d1
+000013D0                           770      
+000013D0  45F9 000014E8            771      lea     ENEMY_Y, a2
+000013D6  3412                     772      move.w  (a2),d2
+000013D8  47F9 000014E0            773      lea     PLAYER_Y, a3
+000013DE  3613                     774      move.w  (a3),d3
+000013E0                           775      
+000013E0  6100 005E                776      bsr     checkCollisionWithPlayer
+000013E4                           777      
+000013E4  B8BC 00000001            778      cmp.l   #1, d4      // if x collide
+000013EA  6700 002A                779      beq     .checkUpDown
+000013EE                           780      
+000013EE  B280                     781      cmp.l   d0, d1  // if playerX is bigger than enemy x
+000013F0  6E00 0014                782      bgt     .moveRight
+000013F4  6000 001A                783      bra     .moveLeft
+Line 784 ERROR: Symbol value differs between first and second pass
+000013F8                           784  .moveRight
+000013F8                           785      *sub.l   d0, d1
+000013F8                           786      *cmp.l   #ENEMY_MOVE_DIST, d1 // if enemy player X offset < enemy_move_dist, no increment
+000013F8                           787      *blt     .checkUpDown
+000013F8  5479 000014E6            788      add.w   #ENEMY_MOVE_DIST, ENEMY_X
+000013FE  6000 0016                789      bra     .checkUpDown
+Line 790 ERROR: Symbol value differs between first and second pass
+00001402                           790  .moveLeft
+00001402                           791      *sub.l   d1, d0
+00001402                           792      *cmp.l   #ENEMY_MOVE_DIST, d0    // same as moveRight
+00001402                           793      *blt     .checkUpDown
+00001402  5579 000014E6            794      sub.w   #ENEMY_MOVE_DIST, ENEMY_X
+Line 795 ERROR: Symbol value differs between first and second pass
+00001408                           795  .checkUpDown
+00001408  B8BC 00000002            796      cmp.l   #2, d4      // if y collide
+0000140E  6700 002A                797      beq      .return
+00001412  B682                     798      cmp.l   d2, d3  // if playerY is bigger than enemy Y
+00001414  6E00 0014                799      bgt     .moveDown
+00001418  6000 001A                800      bra     .moveUp
+Line 801 ERROR: Symbol value differs between first and second pass
+0000141C                           801  .moveDown
+0000141C                           802      *sub.l   d2, d3
+0000141C                           803      *cmp.l   #ENEMY_MOVE_DIST, d3    // if enemy player Y offset < enemy_move_dist, no increment
+0000141C                           804      *blt     .return
+0000141C  5479 000014E8            805      add.w   #ENEMY_MOVE_DIST, ENEMY_Y
+00001422  6000 0016                806      bra     .return
+Line 807 ERROR: Symbol value differs between first and second pass
+00001426                           807  .moveUp
+00001426                           808      *sub.l   d3, d2
+00001426                           809      *cmp.l   #ENEMY_MOVE_DIST, d2    // same as moveDown
+00001426                           810      *blt     .return
+00001426  5579 000014E8            811      sub.w   #ENEMY_MOVE_DIST, ENEMY_Y
+0000142C                           812      
+Line 813 ERROR: Symbol value differs between first and second pass
+0000142C                           813  .return
+0000142C  4CDF 00FF                814      movem.l (sp)+,ALL_REG
+00001430  4E75                     815      rts
+00001432                           816  
+Line 817 ERROR: Symbol value differs between first and second pass
+00001432                           817  checkCollisionWithPlayer:
+00001432  4284                     818      clr.l   d4  //d4 is 0
+00001434  9240                     819      sub.w   d0, d1
+00001436  B27C 0000                820      cmp.w   #0, d1
+0000143A  6D00 0014                821      blt     .XtoPos
+0000143E  6000 0016                822      bra     .contX
+Line 823 ERROR: Symbol value differs between first and second pass
+00001442                           823  .XtoPos
+00001442  E059                     824      ror.w   #8, d1
+00001444  C27C 7FFF                825      and.w   #$7FFF, d1
+Line 826 ERROR: Symbol value differs between first and second pass
+00001448                           826  .contX
+00001448  B2BC 00000002            827      cmp.l   #ENEMY_MOVE_DIST, d1
+0000144E  6D00 0018                828      blt     .checkY  // x collided
+00001452  183C 0001                829      move.b  #1, d4  // return not collided 
+00001456  6000 0010                830      bra     .checkY
+Line 831 ERROR: Symbol value differs between first and second pass
+0000145A                           831  .checkY
+0000145A  9682                     832      sub.l   d2, d3
+0000145C  B67C 0000                833      cmp.w   #0, d3
+00001460  6D00 0014                834      blt     .YtoPos
+00001464  6000 0016                835      bra     .contY
+Line 836 ERROR: Symbol value differs between first and second pass
+00001468                           836  .YtoPos
+00001468  E05B                     837      ror.w   #8, d3
+0000146A  C67C 7FFF                838      and.w   #$7FFF, d3
+Line 839 ERROR: Symbol value differs between first and second pass
+0000146E                           839  .contY
+0000146E  B6BC 00000002            840      cmp.l   #ENEMY_MOVE_DIST, d3
+00001474  6D00 0012                841      blt     .colY
+00001478                           842      * if y not collided, return either 0 or 1 in d4
+00001478  4E75                     843      rts
+Line 844 ERROR: Symbol value differs between first and second pass
+0000147A                           844  .colY
+0000147A  B83C 0001                845      cmp.b   #1, d4
+0000147E  6700 0016                846      beq     .bothCol
+00001482  183C 0002                847      move.b  #2, d4  // only Y collide, return 2
+00001486  4E75                     848      rts
+Line 849 ERROR: Symbol value differs between first and second pass
+00001488                           849  .bothCol
+00001488  183C 0003                850      move.b  #3, d4  // both collide return 3
+0000148C  4E75                     851      rts
+0000148E                           852  
+0000148E                           853     
+0000148E                           854      
+0000148E  FFFF FFFF                855      SIMHALT             ; halt simulator
+00001492                           856  
+Line 857 ERROR: Symbol value differs between first and second pass
+00001492= 50 6C 61 79 65 72 ...    857  INPUT_FILE    dc.b  'PlayerWizard.bmp',0
+Line 858 ERROR: Symbol value differs between first and second pass
+000014A2= 65 6E 65 6D 79 2E ...    858  INPUT_FILE1   dc.b  'enemy.bmp',0
+Line 859 ERROR: Symbol value differs between first and second pass
+000014AB= 41 6E 20 65 72 72 ...    859  ErrorLabel    dc.b    'An error was encountered',0
+Line 860 ERROR: Symbol value differs between first and second pass
+000014C3= 63 6F 6C 6C 69 64 ...    860  DebugLabel    dc.b    'collided',0
+Line 861 ERROR: Symbol value differs between first and second pass
+000014CC=                          861  PLAYER_X      dc.w    1
+Line 862 ERROR: Symbol value differs between first and second pass
+000014CC=                          862  PLAYER_Y      dc.w    1
+Line 863 ERROR: Symbol value differs between first and second pass
+000014CC=                          863  ENEMY_COUNTER   dc.l  1
+Line 864 ERROR: Symbol value differs between first and second pass
+000014CC=                          864  ENEMY_X       dc.w    1
+Line 865 ERROR: Symbol value differs between first and second pass
+000014CC=                          865  ENEMY_Y       dc.w    1
+000014CC  =00006000                866  FILESIZE      EQU     $6000
+000014CC  =00005000                867  FILESIZE1     EQU     $5000
+000014CC                           868                ds.l    0
+Line 869 ERROR: Symbol value differs between first and second pass
+000014CC                           869  FILEBUFFER    ds.b    FILESIZE
+000014CC                           870                ds.l    0
+Line 871 ERROR: Symbol value differs between first and second pass
+000014CC                           871  FILEBUFFER1   ds.b    FILESIZE 
+000014CC                           872  
+000014CC                           873      END    START        ; last line of source
+000014CC                           874  -------------------- end include --------------------
+
+62 errors detected
+No warnings generated
+
+
+SYMBOL TABLE INFORMATION
+Symbol-name         Value
+-------------------------
+ALL_REG             FF
+BITSPERPIXEL        1204
+BMP_DRAW            1140
+BMP_DRAW:ERROR      11FC
+BMP_DRAW:INNERLOOP  11B2
+BMP_DRAW:NEXTROW    11DE
+BMP_DRAW:OUTERLOOP  11A4
+BMP_DRAW:RETURN     11F4
+BMP_DRAW:UPDATECOUNTER  11D8
+BMP_LOAD            106A
+BMP_LOAD:AFTERCHECK  111A
+BMP_LOAD:CHECK32    10D6
+BMP_LOAD:ERROR      1132
+BMP_LOAD:FILECONVERT  1104
+BMP_UNLOAD          1000
+BMP_UNLOAD:AFTERCONVERT  1030
+BMP_UNLOAD:ERROR    1064
+BMP_UNLOAD:FILECONVERT  101A
+CHECKCOLLISIONWITHPLAYER  1440
+CHECKCOLLISIONWITHPLAYER:BOTHCOL  1496
+CHECKCOLLISIONWITHPLAYER:CHECKY  1468
+CHECKCOLLISIONWITHPLAYER:COLY  1488
+CHECKCOLLISIONWITHPLAYER:CONTX  1456
+CHECKCOLLISIONWITHPLAYER:CONTY  147C
+CHECKCOLLISIONWITHPLAYER:XTOPOS  1450
+CHECKCOLLISIONWITHPLAYER:YTOPOS  1476
+CLEARSCREEN         12BA
+CLEAR_SCREEN_COMMAND  B
+CLEAR_SCREEN_MAGIC_VAL  FF00
+COLOR_FORMAT_OFFSET  1C
+DEBUGLABEL          14D4
+DONEINPUT           13C4
+DOUBLE_BUFFERED_MODE  11
+DRAWENEMY           1302
+DRAWENEMY:ERROR     132E
+DRAWING_MODE_TRAP_CODE  5C
+DRAWPLAYER          12C8
+DRAWPLAYER:ERROR    12F8
+DRAWPOSITIONX       1206
+DRAWPOSITIONY       1208
+DRAWPOSITIONY:AFTERCHECK  1108
+DRAWPOSITIONY:AFTERCONVERT  1030
+DRAWPOSITIONY:CHECK32  10CC
+DRAWPOSITIONY:ERROR  1064
+DRAWPOSITIONY:FILECONVERT  101A
+DRAWPOSITIONY:INNERLOOP  119A
+DRAWPOSITIONY:NEXTROW  11C6
+DRAWPOSITIONY:OUTERLOOP  118C
+DRAWPOSITIONY:RETURN  11DA
+DRAWPOSITIONY:UPDATECOUNTER  11C0
+DRAW_PIXEL_CMD      52
+ENEMY_COUNTER       14E2
+ENEMY_MOVE_DIST     2
+ENEMY_X             14E6
+ENEMY_Y             14E8
+ERRORLABEL          14BB
+FILEBUFFER          14EA
+FILEBUFFER1         74EA
+FILESIZE            6000
+FILESIZE1           5000
+FILE_TASK_FCLOSE    38
+FILE_TASK_FCREATE   34
+FILE_TASK_FOPEN     33
+FILE_TASK_FREAD     35
+FILE_TASK_FWRITE    36
+FILE_TASK_PRINT     D
+GAMELOOP            124C
+GET_USER_INPUT_COMMAND  13
+HANDLEINPUT         1340
+HEIGHT_OFFSET       16
+IMAGE_FORMAT_OFFSET  0
+IMAGE_OFFSET        36
+INPUT_FILE          14A0
+INPUT_FILE1         14B1
+KEYDOWNINPUT        13B4
+KEYLEFTINPUT        1384
+KEYRIGHTINPUT       13A4
+KEYUPINPUT          1394
+KEY_DOWN_INPUT      28
+KEY_LEFT_INPUT      25
+KEY_RIGHT_INPUT     27
+KEY_UP_INPUT        26
+LOADENEMY           1294
+LOADENEMY:ERROR     12B4
+LOADPLAYER          126E
+LOADPLAYER:ERROR    128E
+PLAYER_MOVE_DIST    32
+PLAYER_X            14DE
+PLAYER_Y            14E0
+REPAINT_SCREEN_TRAP_CODE  5E
+SENTINEL            DEADDEAD
+SET_PEN_COLOR_CMD   50
+SIZE_OFFSET         2
+START               11F0
+START:ERROR         1246
+SWAPBUFFERS         1338
+SWITCHENDIAN        1138
+TASK_PRINT          D
+UPDATEENEMY         13CA
+UPDATEENEMY:CHECKUPDOWN  1416
+UPDATEENEMY:MOVEDOWN  142A
+UPDATEENEMY:MOVELEFT  1410
+UPDATEENEMY:MOVERIGHT  1406
+UPDATEENEMY:MOVEUP  1434
+UPDATEENEMY:RETURN  143A
+WIDTH_OFFSET        12
